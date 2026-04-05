@@ -1,0 +1,191 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: psilo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in Coolify/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - workerstack
+
+  redis:
+    image: redis:7-alpine
+    container_name: psilo-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - workerstack
+
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:${LITELLM_IMAGE_TAG:-main-stable}
+    container_name: psilo-litellm
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?must start with sk-}
+      LITELLM_LOG: ${LITELLM_LOG:-ERROR}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - ${LITELLM_PORT:-4000}:4000
+    healthcheck:
+      test: ["CMD-SHELL", "python - <<'PY'\nimport socket\ns=socket.socket(); s.settimeout(2)\ns.connect(('127.0.0.1',4000))\ns.close()\nPY"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - workerstack
+
+  paperclip:
+    build:
+      context: ./paperclip
+      dockerfile: Dockerfile
+    container_name: psilo-paperclip
+    restart: unless-stopped
+    command: >-
+      sh -lc '
+      mkdir -p /paperclip &&
+      if [ ! -f /paperclip/instances/default/config.json ]; then
+        echo "[paperclip] No config found, bootstrapping with paperclipai onboard --yes";
+        paperclipai onboard --yes;
+      fi &&
+      exec paperclipai run --no-repair'
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3100
+      PAPERCLIP_HOME: /paperclip
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/paperclip
+      PAPERCLIP_AGENT_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET:?set a long random secret}
+      PAPERCLIP_DEPLOYMENT_MODE: ${PAPERCLIP_DEPLOYMENT_MODE:-authenticated}
+      PAPERCLIP_OPEN_ON_LISTEN: false
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - paperclip_data:/paperclip
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - ${PAPERCLIP_PORT:-3100}:3100
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - workerstack
+
+  # Agent Zero is kept as a separate runtime/UI. You can leave it internal,
+  # or expose it with a domain in Coolify for debugging and manual runs.
+  # We intentionally do NOT claim a turnkey Paperclip->Agent Zero automation bridge here.
+  # Use the worker-gateway service below as the Paperclip HTTP adapter target.
+  agentzero:
+    image: ${AGENTZERO_IMAGE:-agent0ai/agent-zero}
+    container_name: psilo-agentzero
+    restart: unless-stopped
+    environment:
+      AUTH_LOGIN: ${AGENTZERO_AUTH_LOGIN:-admin}
+      AUTH_PASSWORD: ${AGENTZERO_AUTH_PASSWORD:?set a strong password}
+      # A0_SET_* only seeds defaults until settings.json exists.
+      A0_SET_agent_profile: ${A0_SET_agent_profile:-custom}
+      A0_SET_agent_memory_subdir: ${A0_SET_agent_memory_subdir:-production}
+      # Configure your actual model/provider in the Agent Zero UI.
+      # For OpenAI-compatible gateways, Agent Zero docs recommend using
+      # the "OpenAI Compatible" provider and a base URL to your gateway.
+    volumes:
+      - agentzero_usr:/a0/usr
+    ports:
+      - ${AGENTZERO_PORT:-50080}:80
+    networks:
+      - workerstack
+
+  # This service is the webhook endpoint you point Paperclip's HTTP adapter at.
+  # It is a thin placeholder bridge. Replace its internals with your actual logic
+  # for waking Agent Zero, polling status, and calling back to Paperclip.
+  worker-gateway:
+    build:
+      context: ./worker-gateway
+      dockerfile: Dockerfile
+    container_name: psilo-worker-gateway
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      LOG_LEVEL: ${WORKER_GATEWAY_LOG_LEVEL:-info}
+      AGENTZERO_BASE_URL: http://agentzero:80
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    depends_on:
+      litellm:
+        condition: service_healthy
+      paperclip:
+        condition: service_started
+      agentzero:
+        condition: service_started
+    ports:
+      - ${WORKER_GATEWAY_PORT:-8080}:8080
+    healthcheck:
+      test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request, sys\ntry:\n    r=urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)\n    sys.exit(0 if r.status == 200 else 1)\nexcept Exception:\n    sys.exit(1)\nPY"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - workerstack
+
+  # Uncomment this when you have your branded dashboard app ready.
+  # dashboard:
+  #   build:
+  #     context: ./apps/dashboard
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   environment:
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/dashboard
+  #     REDIS_URL: redis://redis:6379/0
+  #     PAPERCLIP_BASE_URL: http://paperclip:3100
+  #     LITELLM_BASE_URL: http://litellm:4000
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   ports:
+  #     - ${DASHBOARD_PORT:-3000}:3000
+  #   networks:
+  #     - workerstack
+
+networks:
+  workerstack:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  paperclip_data:
+  agentzero_usr:
