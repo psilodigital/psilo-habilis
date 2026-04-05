@@ -124,6 +124,12 @@ services:
       - agentzero_usr:/a0/usr
     ports:
       - ${AGENTZERO_PORT:-50080}:80
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     networks:
       - workerstack
 
@@ -140,15 +146,19 @@ services:
       PORT: 8080
       LOG_LEVEL: ${WORKER_GATEWAY_LOG_LEVEL:-info}
       AGENTZERO_BASE_URL: http://agentzero:80
+      AGENTZERO_API_TOKEN: ${AGENTZERO_API_TOKEN:-}
+      AGENTZERO_AUTH_LOGIN: ${AGENTZERO_AUTH_LOGIN:-admin}
+      AGENTZERO_AUTH_PASSWORD: ${AGENTZERO_AUTH_PASSWORD}
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      PAPERCLIP_BASE_URL: http://paperclip:3100
     depends_on:
       litellm:
         condition: service_healthy
       paperclip:
-        condition: service_started
+        condition: service_healthy
       agentzero:
-        condition: service_started
+        condition: service_healthy
     ports:
       - ${WORKER_GATEWAY_PORT:-8080}:8080
     healthcheck:
