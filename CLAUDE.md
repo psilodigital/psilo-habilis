@@ -12,32 +12,32 @@ Habilis (internally "Psilodigital Worker Stack") is a Docker Compose-based infra
 - **worker-gateway** — Python/FastAPI webhook bridge between Paperclip and Agent Zero (port 8080)
 - **Postgres 17** + **Redis 7** — shared infrastructure
 
-The worker-gateway is intentionally a thin stub. Its purpose is to receive Paperclip HTTP adapter wake events (`POST /paperclip/wake`) and bridge them to Agent Zero or custom orchestration logic.
+The worker-gateway bridges Paperclip HTTP adapter wake events (`POST /paperclip/wake`) to Agent Zero via its External API (`POST /api_message`), with async processing and Paperclip callbacks.
 
 ## Commands
 
 ```sh
-# Copy env and fill secrets
-cp .env.example .env
+# Generate .env with random secrets
+make setup
 
-# Build and run the full stack
-docker compose up --build
+# Build and start the full stack
+make build
+
+# Run smoke tests
+make test
+
+# View all make targets
+make help
 
 # Rebuild a single service
 docker compose up --build worker-gateway
 
 # View logs for a specific service
-docker compose logs -f worker-gateway
+make logs-worker-gateway
 
 # Shell into a running container
-docker exec -it psilo-paperclip sh
-docker exec -it psilo-worker-gateway bash
-
-# Paperclip first-time bootstrap (runs automatically, but can be manual)
-paperclipai onboard --yes
-
-# Paperclip server configuration
-paperclipai configure --section server
+make shell-paperclip
+make shell-worker-gateway
 ```
 
 ## Architecture
@@ -53,10 +53,9 @@ paperclipai configure --section server
                     ┌──────────────┐
                     │   worker-    │ :8080
                     │   gateway    │
-                    │ (FastAPI     │
-                    │  stub)       │
+                    │  (FastAPI)   │
                     └──────┬───────┘
-                           │ (bridge logic — TODO)
+                           │ POST /api_message (X-API-KEY)
                            ▼
                     ┌──────────────┐
                     │  Agent Zero  │ :50080
@@ -84,10 +83,13 @@ All services communicate over the `workerstack` Docker bridge network. Container
 
 - `docker-compose.yml` — full stack definition; all services, volumes, healthchecks
 - `.env.example` — all required environment variables with defaults
-- `worker-gateway/app.py` — the entire gateway service (single file, FastAPI)
+- `Makefile` — dev workflow shortcuts (`make setup`, `make build`, `make test`, etc.)
+- `worker-gateway/app.py` — bridge service (FastAPI, Agent Zero integration, Paperclip callbacks)
 - `litellm/config.yaml` — model routing config (which providers/models are available)
 - `paperclip/Dockerfile` — installs `paperclipai` CLI globally via npm
 - `infra/postgres/init/01-create-dbs.sql` — creates `paperclip` and `litellm` databases on first boot
+- `scripts/setup.sh` — generates `.env` with random secrets
+- `scripts/smoke-test.sh` — post-boot validation (13 checks)
 
 ## Environment Variables
 
@@ -95,10 +97,12 @@ All services communicate over the `workerstack` Docker bridge network. Container
 
 ## Worker Gateway Details
 
-- Python 3.12, FastAPI + Uvicorn
-- Single endpoint: `POST /paperclip/wake` receives `{runId, agentId, companyId, ...}` from Paperclip
-- Health check: `GET /healthz`
-- The bridge logic (validating Paperclip auth, routing to Agent Zero, calling back results) is marked as TODO — this is the primary area for custom development
+- Python 3.12, FastAPI + Uvicorn + httpx + pydantic-settings
+- `POST /paperclip/wake` — accepts Paperclip wake payload, returns 202, dispatches background task that calls Agent Zero `POST /api_message` and calls back to Paperclip with results
+- `GET /healthz` — health check with downstream connectivity status (Agent Zero + LiteLLM)
+- Configuration via environment variables (see `Settings` class in `app.py`)
+- Structured JSON logging
+- Remaining TODOs: Paperclip auth header validation, Paperclip callback endpoint confirmation
 
 ## Deployment
 

@@ -1,90 +1,187 @@
-# Psilodigital Worker Stack (Hetzner / Coolify)
+# Habilis — Psilodigital Worker Stack
 
-This stack gives you a practical base for:
+Docker Compose infrastructure that wires Paperclip (orchestration), LiteLLM (model gateway), Agent Zero (worker runtime), and a FastAPI bridge service into a single deployable stack. Target deployment: Hetzner via Coolify.
 
-- Paperclip as the control plane
-- LiteLLM as the model gateway
-- Agent Zero as a separate worker runtime
-- a small `worker-gateway` service as the webhook target for Paperclip's HTTP adapter
-- shared Postgres + Redis infrastructure
+## Architecture
 
-## Important caveat
+```
+                    ┌──────────────┐
+                    │   Paperclip  │ :3100
+                    │  (control    │
+                    │   plane)     │
+                    └──────┬───────┘
+                           │ HTTP adapter POST /paperclip/wake
+                           ▼
+                    ┌──────────────┐
+                    │   worker-    │ :8080
+                    │   gateway    │
+                    │  (FastAPI)   │
+                    └──────┬───────┘
+                           │ POST /api_message (X-API-KEY)
+                           ▼
+                    ┌──────────────┐
+                    │  Agent Zero  │ :50080
+                    │  (worker     │
+                    │   runtime)   │
+                    └──────────────┘
 
-This stack is **deployable**, but the `worker-gateway` is intentionally a **thin stub**, not a finished Paperclip-to-Agent-Zero bridge.
+    ┌──────────┐     ┌──────────┐     ┌──────────┐
+    │ Postgres │     │  Redis   │     │ LiteLLM  │
+    │   :5432  │     │  :6379   │     │  :4000   │
+    └──────────┘     └──────────┘     └──────────┘
+```
 
-That is the correct place to add your custom logic for:
+All services communicate over the `workerstack` Docker bridge network. Container names follow the `psilo-*` convention.
 
-1. receiving Paperclip HTTP adapter wake events
-2. deciding which worker to run
-3. waking Agent Zero or your own worker orchestration
-4. pushing status/results back into Paperclip
+## Prerequisites
 
-## Why the bridge exists
+- **Docker** and **Docker Compose** (v2) — [install](https://docs.docker.com/get-docker/)
+- **At least one LLM provider API key** (OpenAI, Anthropic, Google, or Groq) for LiteLLM to route model requests
+- ~4 GB free RAM for all six containers
 
-Paperclip's HTTP adapter is meant to POST to an external agent service. It sends execution context to that external runtime, which then processes the job and calls back to Paperclip. Agent Zero is a separate runtime/UI and is not, by itself, a documented drop-in Paperclip webhook target.
-
-## Paperclip first boot
-
-The Paperclip service in this compose file tries to bootstrap itself with:
+## Quick Start
 
 ```sh
-paperclipai onboard --yes
+# 1. Generate .env with random secrets
+make setup
+
+# 2. Add at least one provider key
+#    Edit .env and fill in OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
+
+# 3. Build and start all services
+make build
+
+# 4. Verify everything is healthy
+make status
+
+# 5. Run smoke tests
+make test
 ```
 
-on first start if no config exists under `/paperclip/instances/default/config.json`.
+## Service URLs (local)
 
-After the first successful boot, you should still review and harden the server configuration, especially for internet-facing deployment.
+| Service | URL | Notes |
+|---------|-----|-------|
+| Paperclip | http://localhost:3100 | Control plane UI |
+| LiteLLM | http://localhost:4000 | Model gateway (auth required) |
+| Agent Zero | http://localhost:50080 | Worker runtime UI |
+| Worker Gateway | http://localhost:8080 | Bridge API |
+| Worker Gateway Health | http://localhost:8080/healthz | Health + downstream status |
 
-## Suggested production hardening steps
+Postgres (`:5432`) and Redis (`:6379`) are internal-only — not exposed to the host.
 
-1. Keep `paperclip`, `litellm`, and your eventual dashboard on public domains.
-2. Keep `postgres`, `redis`, and ideally `agentzero` internal-only.
-3. In Coolify, attach domains only to:
-   - Paperclip
-   - LiteLLM
-   - your branded dashboard (later)
-4. After Paperclip starts, open a shell in the Paperclip container and run:
+## Make Targets
 
-```sh
-paperclipai configure --section server
+```
+make setup      Generate .env from .env.example with random secrets
+make validate   Validate docker-compose.yml
+make build      Build and start the stack (detached)
+make up         Start the stack (detached, no rebuild)
+make down       Stop the stack
+make clean      Stop the stack and remove volumes
+make logs       Tail logs for all services
+make status     Show service status
+make test       Run smoke tests against running stack
 ```
 
-Then move the instance to the proper authenticated/public configuration.
+Per-service shortcuts: `make logs-worker-gateway`, `make restart-paperclip`, `make shell-agentzero`, etc.
 
-## Suggested Coolify domains
+## Environment Variables
 
-- `paperclip.yourdomain.com` -> Paperclip service, port 3100
-- `llm.yourdomain.com` -> LiteLLM service, port 4000
-- `workers.yourdomain.com` -> your dashboard later
-- No public domain for Postgres / Redis / Agent Zero unless you specifically want one
+Run `make setup` to auto-generate secrets. The setup script fills:
 
-## Paperclip HTTP adapter target
+| Variable | Generated | Notes |
+|----------|-----------|-------|
+| `POSTGRES_PASSWORD` | Yes | 32-char random |
+| `LITELLM_MASTER_KEY` | Yes | `sk-` prefix + 48-char random |
+| `PAPERCLIP_AGENT_JWT_SECRET` | Yes | 64-char hex |
+| `AGENTZERO_AUTH_PASSWORD` | Yes | 32-char random |
 
-Inside Paperclip, configure an agent with adapter type `http` and point it to:
+You must still set manually:
 
-```txt
-http://worker-gateway:8080/paperclip/wake
+| Variable | Where |
+|----------|-------|
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / etc. | At least one provider key in `.env` |
+| `AGENTZERO_API_TOKEN` | From Agent Zero UI after first boot (see below) |
+
+See `.env.example` for the full list.
+
+## Post-Boot Setup
+
+### 1. Get the Agent Zero API token
+
+After the stack is running:
+
+1. Open http://localhost:50080
+2. Log in with the credentials from `.env` (`AGENTZERO_AUTH_LOGIN` / `AGENTZERO_AUTH_PASSWORD`)
+3. Go to **Settings > External Services**
+4. Copy the API token
+5. Paste it into `.env` as `AGENTZERO_API_TOKEN=<token>`
+6. Restart the gateway: `make restart-worker-gateway`
+
+### 2. Configure Agent Zero's model provider
+
+In the Agent Zero UI, set the chat model to use LiteLLM as an OpenAI-compatible gateway:
+
+- Provider: **OpenAI Compatible**
+- Base URL: `http://litellm:4000`
+- API Key: your `LITELLM_MASTER_KEY` value
+- Model: one of the models in `litellm/config.yaml` (e.g. `gpt-4.1-mini`)
+
+### 3. Configure Paperclip HTTP adapter
+
+1. Open http://localhost:3100
+2. Create an agent with adapter type **HTTP**
+3. Set the webhook URL to:
+   ```
+   http://worker-gateway:8080/paperclip/wake
+   ```
+4. Send a test task — check worker-gateway logs with `make logs-worker-gateway`
+
+## How the Bridge Works
+
+1. Paperclip POSTs a wake event to `worker-gateway` at `/paperclip/wake`
+2. The gateway accepts immediately (HTTP 202) and dispatches a background task
+3. The background task sends the input to Agent Zero via `POST /api_message`
+4. On completion, the gateway calls back to Paperclip with results
+
+If Agent Zero is unreachable or the API token is missing, the gateway logs the error and still attempts the Paperclip callback with an error status.
+
+## Project Structure
+
+```
+├── docker-compose.yml              Full stack definition
+├── .env.example                    Environment variable template
+├── Makefile                        Dev workflow shortcuts
+├── worker-gateway/
+│   ├── app.py                      Bridge service (FastAPI)
+│   ├── Dockerfile
+│   └── requirements.txt
+├── paperclip/
+│   └── Dockerfile                  Installs paperclipai CLI
+├── litellm/
+│   └── config.yaml                 Model routing (OpenAI, Anthropic, Google, Groq)
+├── infra/
+│   └── postgres/init/
+│       └── 01-create-dbs.sql       Creates paperclip + litellm databases
+└── scripts/
+    ├── setup.sh                    .env generator with random secrets
+    └── smoke-test.sh               Post-boot validation
 ```
 
-If you need to test from outside the Docker network, publish the worker-gateway port and use your host/domain.
+## Coolify Deployment
 
-## Copy to .env
+Use the **Docker Compose build pack** in Coolify and point it to this repo.
 
-```sh
-cp .env.example .env
-```
+**Public-facing services** (attach domains):
+- `paperclip.yourdomain.com` → Paperclip, port 3100
+- `llm.yourdomain.com` → LiteLLM, port 4000
 
-Then fill in your real secrets.
+**Internal-only** (no public domain):
+- Postgres, Redis, Agent Zero, Worker Gateway
 
-## Run locally
+**Required env vars in Coolify**: same as `.env.example` — set all secrets in Coolify's environment variable UI rather than committing a `.env` file.
 
-```sh
-docker compose up --build
-```
-
-## Coolify notes
-
-- Use Docker Compose build pack.
-- Point Coolify to this compose file.
-- Set all required environment variables in Coolify.
-- Prefer pinning LiteLLM to an exact stable tag after your first successful test.
+**Recommendations**:
+- Pin `LITELLM_IMAGE_TAG` to a specific stable version after testing
+- After Paperclip starts, shell in and run `paperclipai configure --section server` to harden the instance for internet-facing deployment
