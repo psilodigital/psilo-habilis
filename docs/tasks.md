@@ -75,56 +75,50 @@ _Nothing currently in progress._
 
 ## Next Up — Priority Order
 
-### 1. Dashboard App (Next.js)
-Scaffold the customer-facing product surface.
-- [ ] Initialize Next.js app in `apps/dashboard/`
-- [ ] Add Dockerfile for dashboard
-- [ ] Uncomment and wire dashboard in docker-compose.yml
-- [ ] Connect to Postgres (`dashboard` DB — already created)
-- [ ] Connect to Redis
-- [ ] Basic auth/session setup
-- [ ] First screen: workspace overview
+### 1. Blueprint-Driven Worker Thin Slice
+- [ ] Create worker blueprint schema (`pack.yaml`)
+- [ ] Create client company schema (`company.yaml`)
+- [ ] Create worker instance schema (`worker.instance.yaml`)
+- [ ] Create `worker-packs/inbox-worker/`
+- [ ] Create `clients/psilodigital/`
+- [ ] Add shared orchestration contracts
+- [ ] Add `POST /v1/workers/run` in worker-gateway
+- [ ] Validate blueprint + client-instance resolution locally
 
-### 2. Add Real Provider API Key
-- [ ] Add at least one provider key to `.env`
+### 2. Runtime Adapter Boundary
+- [ ] Formalize runtime adapter interface
+- [ ] Route worker-gateway through Agent Zero adapter or clear stub
+- [ ] Document what is real vs stubbed
+- [ ] Prepare project-aware Agent Zero execution model
+
+### 3. Real Model Path
+- [ ] Add one provider API key
 - [ ] Verify LiteLLM can make real model calls
-- [ ] Test `worker-default` alias end-to-end
+- [ ] Verify worker-gateway -> Agent Zero -> LiteLLM flow
 
-### 3. Agent Zero Token + Model Config
-- [ ] Copy API token from Agent Zero UI → `.env`
-- [ ] Configure Agent Zero to route through LiteLLM (`http://litellm:4000`)
-- [ ] Verify worker-gateway → Agent Zero → LiteLLM flow works
+### 4. Paperclip Integration
+- [ ] Confirm Paperclip wake/callback contract
+- [ ] Configure HTTP adapter to gateway
+- [ ] Test Paperclip-originated wake -> gateway -> runtime -> callback
 
-### 4. Paperclip HTTP Adapter Config
-- [ ] Verify Paperclip adapter callback contract (exact URL path)
-- [ ] Configure HTTP adapter pointing to `http://worker-gateway:8080/paperclip/wake`
-- [ ] Test Paperclip-originated wake → gateway → Agent Zero → callback
-- [ ] Update `_callback_to_paperclip()` URL if needed
+### 5. Multi-Tenancy Foundation (Config-First)
+- [ ] Company/client scoping in gateway
+- [ ] One client folder per company
+- [ ] One Agent Zero project per company
+- [ ] Per-client overrides and limits
+- [ ] Defer DB-backed tenant model until after thin slice works
 
-### 5. Worker Definitions
-- [ ] Define first worker type schemas in `packages/worker-definitions/`
-- [ ] Inbox Worker definition (capabilities, tools, limits)
-- [ ] Content Worker definition
-- [ ] Worker type routing in worker-gateway
-
-### 6. Multi-Tenancy Foundation
-- [ ] Workspace/company model in Postgres
-- [ ] Tenant isolation in worker-gateway (companyId scoping)
-- [ ] Per-workspace credentials storage
-- [ ] Per-workspace budget tracking concept
+### 6. Dashboard App (Next.js)
+- [ ] Scaffold dashboard
+- [ ] Workspace overview
+- [ ] Worker status view
+- [ ] Thin-slice run/test UI
 
 ### 7. Connector Layer
-- [ ] Design connector interface in `packages/connector-sdk/`
-- [ ] First connector: email/IMAP (for Inbox Worker)
-- [ ] MCP integration strategy
-- [ ] Workspace-scoped connector permissions
-
-### 8. Dashboard Product Features
-- [ ] Worker activation flow
-- [ ] Task history view
-- [ ] Approval gates for sensitive actions
-- [ ] Usage/cost visibility
-- [ ] Connector setup UI
+- [ ] Connector SDK structure
+- [ ] First connector strategy
+- [ ] Workspace-scoped permissions
+- [ ] MCP integration direction
 
 ---
 
