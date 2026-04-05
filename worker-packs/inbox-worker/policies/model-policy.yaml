@@ -1,0 +1,35 @@
+# Model Policy — Inbox Worker
+# Defines model routing and constraints for this worker.
+
+id: model-policy
+name: Model Policy
+description: >
+  Controls which models are used for each agent and task,
+  with fallback and budget constraints.
+
+# Default model for all agents in this worker
+default: openai/gpt-4o-mini
+
+# Per-agent overrides (optional)
+agents:
+  classifier:
+    model: openai/gpt-4o-mini
+    reason: Classification is a structured, low-creativity task.
+  reply-drafter:
+    model: openai/gpt-4o-mini
+    reason: Reply drafting benefits from the same model for consistency.
+  lead:
+    model: openai/gpt-4o-mini
+    reason: Orchestration uses the default model.
+
+# Budget constraints (per run)
+limits:
+  maxTokensPerRun: 8192
+  maxCostPerRunUsd: 0.05
+
+# All model calls route through LiteLLM
+routing:
+  gateway: litellm
+  note: >
+    All model identifiers use LiteLLM model aliases.
+    The gateway handles provider routing, key management, and rate limiting.

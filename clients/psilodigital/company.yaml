@@ -1,0 +1,38 @@
+# Client Company Configuration — Psilodigital
+# Defines the company identity and platform-wide settings.
+
+id: psilodigital
+name: Psilodigital
+displayName: Psilodigital Digital Agency
+industry: technology
+tier: internal  # internal = dogfooding client
+
+# Contact and ownership
+contact:
+  email: team@psilodigital.com
+  owner: André Esteves
+
+# Platform isolation identifiers
+# These map to the underlying service boundaries.
+paperclip:
+  companyId: psilodigital
+  # One Paperclip company per client
+
+agentzero:
+  projectId: psilodigital
+  # One Agent Zero project per client
+
+# Global company-level settings
+settings:
+  timezone: America/Sao_Paulo
+  locale: pt-BR
+  defaultModel: openai/gpt-4o-mini
+
+# Active worker instances for this client
+workers:
+  - instanceRef: workers/inbox-worker.instance.yaml
+
+# Context files available to all workers for this client
+context:
+  - context/company-profile.md
+  - context/brand-voice.md

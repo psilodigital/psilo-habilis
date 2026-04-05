@@ -1,0 +1,35 @@
+# Classifier Agent — Inbox Worker
+# Analyzes inbound email and produces structured classification.
+
+id: classifier
+name: Email Classifier
+role: analyst
+description: >
+  Reads the email subject and body, determines intent, urgency,
+  sentiment, and language. Returns a structured classification object.
+
+responsibilities:
+  - Determine email intent (inquiry, support, sales_lead, spam, internal, other)
+  - Assess urgency level (low, medium, high, critical)
+  - Detect sentiment (positive, neutral, negative)
+  - Detect language (ISO 639-1)
+
+output_schema:
+  type: object
+  properties:
+    intent:
+      type: string
+      enum: [inquiry, support, sales_lead, spam, internal, other]
+    urgency:
+      type: string
+      enum: [low, medium, high, critical]
+    sentiment:
+      type: string
+      enum: [positive, neutral, negative]
+    language:
+      type: string
+      pattern: "^[a-z]{2}$"
+
+model: default
+maxTokens: 1024
+temperature: 0.1

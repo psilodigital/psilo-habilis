@@ -1,0 +1,15 @@
+{
+  "clientId": "psilodigital",
+  "workerInstanceId": "psilodigital.inbox-worker",
+  "blueprintId": "inbox-worker",
+  "blueprintVersion": "1.0.0",
+  "taskKind": "inbound_email_triage",
+  "input": {
+    "message": "Hi, I would like to know more about your AI worker platform. Can you send me pricing details?",
+    "source": {
+      "type": "email",
+      "ref": "msg-001",
+      "timestamp": "2025-04-05T10:30:00Z"
+    }
+  }
+}

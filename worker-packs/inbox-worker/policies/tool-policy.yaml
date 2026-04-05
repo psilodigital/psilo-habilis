@@ -1,0 +1,41 @@
+# Tool Policy — Inbox Worker
+# Defines which external tools and connectors the worker can use.
+
+id: tool-policy
+name: Tool Policy
+description: >
+  Controls which tools and integrations the inbox worker
+  is permitted to use during execution.
+
+# Allowed tools for v1
+allowed:
+  - id: email_read
+    description: Read inbound email content from the provided payload.
+    scope: read_only
+
+  - id: email_draft
+    description: Compose a draft reply (does not send).
+    scope: write_draft
+
+# Explicitly denied tools (defense in depth)
+denied:
+  - id: email_send
+    description: >
+      Sending email directly is not permitted in v1.
+      All replies go through the approval gate.
+    reason: Requires human approval flow.
+
+  - id: calendar_access
+    description: No calendar access needed for email triage.
+    reason: Out of scope for inbox worker.
+
+  - id: file_system
+    description: No filesystem access permitted.
+    reason: Security boundary.
+
+# Future tools (planned but not yet available)
+planned:
+  - id: email_send
+    description: Will be enabled after approval flow is implemented.
+  - id: crm_lookup
+    description: Look up sender in CRM for context enrichment.

@@ -1,0 +1,44 @@
+# Approval Policy — Inbox Worker
+# Defines when human approval is required before acting.
+
+id: approval-policy
+name: Approval Policy
+description: >
+  Controls which email categories require human approval before
+  sending a reply, and which can be auto-sent.
+
+rules:
+  # Default: require approval for all replies
+  default: require_approval
+
+  # Per-category overrides
+  overrides:
+    spam:
+      action: auto_archive
+      approval: none
+      description: Spam is silently archived, no reply sent.
+
+    inquiry:
+      action: draft_reply
+      approval: require_approval
+      description: General inquiries require human review before sending.
+
+    support:
+      action: draft_reply
+      approval: require_approval
+      description: Support replies require human review.
+
+    sales_lead:
+      action: draft_reply
+      approval: require_approval
+      description: Sales lead replies always require human review.
+
+    internal:
+      action: forward
+      approval: none
+      description: Internal messages are forwarded without approval.
+
+    critical:
+      action: escalate
+      approval: require_approval
+      description: Critical urgency messages are escalated immediately.

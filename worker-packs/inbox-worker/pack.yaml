@@ -1,0 +1,50 @@
+# Inbox Worker Blueprint
+# Defines the reusable worker pack for inbound email triage and response.
+# Clients instantiate this blueprint with company-specific overrides.
+
+id: inbox-worker
+version: "1.0.0"
+name: Inbox Worker
+description: >
+  Triages inbound email, classifies intent, drafts replies,
+  and routes messages that require human approval.
+
+category: communication
+status: stable
+
+# Default task kinds this worker can handle
+taskKinds:
+  - inbound_email_triage
+  - email_reply_draft
+  - email_classify
+
+# Agent definitions (references to agent config files)
+agents:
+  lead: agents/lead.yaml
+  classifier: agents/classifier.yaml
+  reply-drafter: agents/reply-drafter.yaml
+
+# Policy files
+policies:
+  approval: policies/approval-policy.yaml
+  model: policies/model-policy.yaml
+  memory: policies/memory-policy.yaml
+  tools: policies/tool-policy.yaml
+
+# Output schema
+outputs:
+  runResult: outputs/run-result.schema.json
+
+# Default configuration (can be overridden per client instance)
+defaults:
+  model: openai/gpt-4o-mini
+  maxTokens: 4096
+  temperature: 0.3
+  approvalRequired: true
+  memoryEnabled: true
+  maxConcurrentRuns: 3
+  timeoutSeconds: 120
+
+# Persona and playbook references
+persona: persona.md
+playbook: playbook.md

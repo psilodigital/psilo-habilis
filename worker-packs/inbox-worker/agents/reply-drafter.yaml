@@ -1,0 +1,36 @@
+# Reply Drafter Agent — Inbox Worker
+# Generates contextual email replies using company brand voice.
+
+id: reply-drafter
+name: Reply Drafter
+role: writer
+description: >
+  Drafts a reply to the inbound email using the company's brand voice
+  and the classification context. Produces a plain-text reply body
+  suitable for review or auto-send.
+
+responsibilities:
+  - Read classification context from classifier output
+  - Apply company brand voice and tone guidelines
+  - Draft a concise, helpful reply (under 200 words by default)
+  - Include a clear call to action where appropriate
+
+inputs:
+  - classification (from classifier agent)
+  - original email (subject, body, sender)
+  - company brand voice (from client context)
+
+output_schema:
+  type: object
+  properties:
+    replyBody:
+      type: string
+    replySubject:
+      type: string
+    tone:
+      type: string
+      enum: [formal, friendly, neutral]
+
+model: default
+maxTokens: 2048
+temperature: 0.4

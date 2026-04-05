@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InboxWorkerRunResult",
+  "description": "Structured output from an inbox worker run.",
+  "type": "object",
+  "required": ["runId", "status", "classification", "artifacts", "metadata"],
+  "properties": {
+    "runId": {
+      "type": "string",
+      "description": "Unique identifier for this worker run."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "awaiting_approval", "error", "timeout"],
+      "description": "Final status of the worker run."
+    },
+    "classification": {
+      "type": "object",
+      "description": "Email classification results.",
+      "required": ["intent", "urgency", "sentiment", "language"],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "enum": ["inquiry", "support", "sales_lead", "spam", "internal", "other"]
+        },
+        "urgency": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "sentiment": {
+          "type": "string",
+          "enum": ["positive", "neutral", "negative"]
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2}$"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Output artifacts produced by this run.",
+      "items": {
+        "type": "object",
+        "required": ["type", "content"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["draft_reply", "classification_report", "escalation_notice"]
+          },
+          "content": {
+            "type": "string"
+          },
+          "approvalStatus": {
+            "type": "string",
+            "enum": ["pending", "approved", "rejected", "not_required"]
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Execution metadata.",
+      "properties": {
+        "durationMs": {
+          "type": "integer",
+          "description": "Total execution time in milliseconds."
+        },
+        "modelUsed": {
+          "type": "string",
+          "description": "LiteLLM model alias used for this run."
+        },
+        "tokensUsed": {
+          "type": "integer",
+          "description": "Total tokens consumed across all agent calls."
+        },
+        "blueprintId": {
+          "type": "string"
+        },
+        "blueprintVersion": {
+          "type": "string"
+        },
+        "clientId": {
+          "type": "string"
+        },
+        "workerInstanceId": {
+          "type": "string"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "description": "Error details if status is 'error'.",
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

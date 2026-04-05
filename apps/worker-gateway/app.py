@@ -1,93 +1,73 @@
 """
-Psilodigital Worker Gateway
-Bridges Paperclip HTTP adapter wake events to Agent Zero's External API.
+Psilodigital Worker Gateway — v1
 
-Flow:
-  1. Paperclip POSTs to /paperclip/wake with run context
-  2. Gateway accepts immediately (202) and dispatches a background task
-  3. Background task sends the input to Agent Zero via POST /api_message
-  4. On completion, gateway calls back to Paperclip with results
+Orchestration boundary between callers and the worker runtime.
+
+Routes:
+  GET  /           — root info
+  GET  /health     — health check
+  GET  /info       — service metadata
+  POST /v1/workers/run — execute a worker task (blueprint-driven)
+  POST /paperclip/wake — legacy Paperclip wake endpoint (preserved)
 """
 
 import asyncio
 import base64
-import logging
-import os
-import sys
+import time
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+
+from gateway.config import settings
+from gateway.logging import logger
+from gateway.models import (
+    Artifact,
+    PaperclipWakePayload,
+    WakeResponse,
+    WorkerRunRequest,
+    WorkerRunResponse,
+    BlueprintInfo,
+    ClientInfo,
+    WorkerInstanceInfo,
+    ResolvedConfig,
+    RunMetadata,
+    RunError,
+)
+from gateway.resolver import ResolutionError, resolve_all
+from gateway.adapters.stub import StubRuntimeAdapter
+from gateway.adapters.agentzero import AgentZeroAdapter
 
 # ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-class Settings(BaseSettings):
-    port: int = 8080
-    log_level: str = "INFO"
-
-    # Agent Zero
-    agentzero_base_url: str = "http://agentzero:80"
-    agentzero_api_token: str = ""  # from Agent Zero UI: Settings > External Services
-    agentzero_auth_login: str = "admin"
-    agentzero_auth_password: str = ""
-
-    # LiteLLM (for future direct model calls from the gateway)
-    litellm_base_url: str = "http://litellm:4000"
-    litellm_master_key: str = ""
-
-    # Paperclip (for callbacks)
-    paperclip_base_url: str = "http://paperclip:3100"
-
-    model_config = {"env_file": ".env", "case_sensitive": False}
-
-
-settings = Settings()
-
-# ---------------------------------------------------------------------------
-# Logging — structured JSON
-# ---------------------------------------------------------------------------
-
-class JSONFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        import json
-        log_obj = {
-            "ts": self.formatTime(record),
-            "level": record.levelname,
-            "logger": record.name,
-            "msg": record.getMessage(),
-        }
-        if record.exc_info and record.exc_info[0]:
-            log_obj["exc"] = self.formatException(record.exc_info)
-        return json.dumps(log_obj)
-
-
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(JSONFormatter())
-logging.root.handlers = [handler]
-logging.root.setLevel(settings.log_level.upper())
-logger = logging.getLogger("worker-gateway")
-
-# ---------------------------------------------------------------------------
-# HTTP client lifecycle
+# HTTP client + adapter lifecycle
 # ---------------------------------------------------------------------------
 
 http_client: Optional[httpx.AsyncClient] = None
+runtime_adapter = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client
+    global http_client, runtime_adapter
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
-    logger.info("Worker gateway started")
+
+    # v1: Use stub adapter by default.
+    # Switch to AgentZeroAdapter when A0 integration is confirmed working.
+    # To test with A0: set RUNTIME_ADAPTER=agentzero in env (future).
+    runtime_adapter = StubRuntimeAdapter()
+    logger.info(
+        "Worker gateway v1.0.0 started — adapter=%s, repo_root=%s",
+        runtime_adapter.name,
+        settings.repo_root,
+    )
     yield
     await http_client.aclose()
     logger.info("Worker gateway stopped")
+
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -95,88 +75,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Psilodigital Worker Gateway",
-    version="0.3.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
 
 # ---------------------------------------------------------------------------
-# Root / info
+# GET / — root
 # ---------------------------------------------------------------------------
 
 @app.get("/")
 async def root():
-    """Minimal root response for load balancers and quick checks."""
-    return {"service": "worker-gateway", "version": "0.3.0", "status": "ok"}
+    return {"service": "worker-gateway", "version": "1.0.0", "status": "ok"}
 
-
-@app.get("/info")
-async def info():
-    """Service metadata for observability."""
-    return {
-        "service": "worker-gateway",
-        "version": "0.3.0",
-        "endpoints": {
-            "health": "/healthz",
-            "wake": "POST /paperclip/wake",
-            "info": "/info",
-        },
-        "downstream": {
-            "agentzero": settings.agentzero_base_url,
-            "litellm": settings.litellm_base_url,
-            "paperclip": settings.paperclip_base_url,
-        },
-        "agentzero_token_configured": bool(_get_a0_api_token()),
-    }
 
 # ---------------------------------------------------------------------------
-# Models
+# GET /health — health check
 # ---------------------------------------------------------------------------
 
-class PaperclipWakePayload(BaseModel):
-    """Payload sent by Paperclip's HTTP adapter on wake."""
-    runId: str
-    agentId: str
-    companyId: str
-    input: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None
-    callbackUrl: Optional[str] = None
-    # Accept arbitrary extra fields from Paperclip
-    model_config = {"extra": "allow"}
-
-
-class WakeResponse(BaseModel):
-    accepted: bool
-    runId: str
-    message: str
-
-# ---------------------------------------------------------------------------
-# Helper — resolve Agent Zero API token
-# ---------------------------------------------------------------------------
-
-def _get_a0_api_token() -> str:
-    """Return the Agent Zero API token.
-
-    Priority:
-      1. Explicit AGENTZERO_API_TOKEN env var (copied from A0 UI).
-      2. Fall back to computing base64(login:password) — works for basic auth
-         but may not match A0's internal token format; prefer the explicit token.
-    """
-    if settings.agentzero_api_token:
-        return settings.agentzero_api_token
-    if settings.agentzero_auth_login and settings.agentzero_auth_password:
-        creds = f"{settings.agentzero_auth_login}:{settings.agentzero_auth_password}"
-        return base64.b64encode(creds.encode()).decode()
-    return ""
-
-# ---------------------------------------------------------------------------
-# Health
-# ---------------------------------------------------------------------------
-
-@app.get("/healthz")
-async def healthz() -> Dict[str, Any]:
+@app.get("/health")
+async def health() -> Dict[str, Any]:
     """Liveness/readiness probe with optional downstream checks."""
-    result: Dict[str, Any] = {"status": "ok", "downstream": {}}
+    result: Dict[str, Any] = {"status": "ok", "version": "1.0.0", "downstream": {}}
 
     async def _check(name: str, url: str):
         try:
@@ -195,8 +115,227 @@ async def healthz() -> Dict[str, Any]:
 
     return result
 
+
+# Preserve legacy /healthz endpoint
+@app.get("/healthz")
+async def healthz() -> Dict[str, Any]:
+    return await health()
+
+
 # ---------------------------------------------------------------------------
-# Wake endpoint
+# GET /info — service metadata
+# ---------------------------------------------------------------------------
+
+@app.get("/info")
+async def info():
+    return {
+        "service": "worker-gateway",
+        "version": "1.0.0",
+        "runtimeAdapter": runtime_adapter.name if runtime_adapter else "none",
+        "endpoints": {
+            "health": "/health",
+            "run": "POST /v1/workers/run",
+            "wake": "POST /paperclip/wake",
+            "info": "/info",
+        },
+        "downstream": {
+            "agentzero": settings.agentzero_base_url,
+            "litellm": settings.litellm_base_url,
+            "paperclip": settings.paperclip_base_url,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/workers/run — blueprint-driven worker execution
+# ---------------------------------------------------------------------------
+
+@app.post("/v1/workers/run", response_model=WorkerRunResponse)
+async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
+    """
+    Execute a worker task.
+
+    1. Resolve blueprint + client + instance configs from disk
+    2. Merge config (blueprint defaults → instance overrides → run overrides)
+    3. Execute via runtime adapter
+    4. Return structured response
+    """
+    run_id = str(uuid.uuid4())
+    started_at = datetime.now(timezone.utc)
+
+    logger.info(
+        "POST /v1/workers/run — runId=%s client=%s instance=%s blueprint=%s@%s task=%s",
+        run_id,
+        req.clientId,
+        req.workerInstanceId,
+        req.blueprintId,
+        req.blueprintVersion,
+        req.taskKind,
+    )
+
+    # --- Step 1: Resolve ---
+    try:
+        blueprint, client, instance, merged_config, client_context = resolve_all(
+            client_id=req.clientId,
+            worker_instance_id=req.workerInstanceId,
+            blueprint_id=req.blueprintId,
+            blueprint_version=req.blueprintVersion,
+            run_overrides=req.runOverrides.model_dump(exclude_none=True) if req.runOverrides else None,
+        )
+    except ResolutionError as exc:
+        logger.error("Resolution failed: [%s] %s", exc.code, exc.message)
+        return _error_response(
+            run_id=run_id,
+            req=req,
+            started_at=started_at,
+            error_code=exc.code,
+            error_message=exc.message,
+        )
+
+    # Validate task kind against blueprint
+    supported_tasks = blueprint.get("taskKinds", [])
+    if supported_tasks and req.taskKind not in supported_tasks:
+        logger.error(
+            "Task kind '%s' not supported by blueprint '%s'. Supported: %s",
+            req.taskKind,
+            req.blueprintId,
+            supported_tasks,
+        )
+        return _error_response(
+            run_id=run_id,
+            req=req,
+            started_at=started_at,
+            error_code="UNSUPPORTED_TASK_KIND",
+            error_message=(
+                f"Task kind '{req.taskKind}' is not supported by blueprint "
+                f"'{req.blueprintId}'. Supported: {supported_tasks}"
+            ),
+        )
+
+    # --- Step 2: Execute via runtime adapter ---
+    result = await runtime_adapter.execute(
+        task_kind=req.taskKind,
+        input_message=req.input.message,
+        input_data=req.input.data,
+        merged_config=merged_config,
+        blueprint=blueprint,
+        client_context=client_context,
+    )
+
+    completed_at = datetime.now(timezone.utc)
+    duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+    # --- Step 3: Build response ---
+    if result.is_error:
+        return _error_response(
+            run_id=run_id,
+            req=req,
+            started_at=started_at,
+            error_code=result.error_code,
+            error_message=result.error_message,
+        )
+
+    # Determine status
+    status = "completed"
+    if hasattr(result, "_status_override") and result._status_override:
+        status = result._status_override
+
+    response = WorkerRunResponse(
+        runId=run_id,
+        status=status,
+        blueprint=BlueprintInfo(
+            id=req.blueprintId,
+            version=req.blueprintVersion,
+            name=blueprint.get("name", req.blueprintId),
+        ),
+        client=ClientInfo(
+            id=req.clientId,
+            name=client.get("name", req.clientId),
+        ),
+        workerInstance=WorkerInstanceInfo(
+            instanceId=req.workerInstanceId,
+            blueprintId=req.blueprintId,
+        ),
+        resolvedConfig=ResolvedConfig(**merged_config),
+        classification=result.classification,
+        artifacts=result.artifacts,
+        metadata=RunMetadata(
+            durationMs=duration_ms,
+            modelUsed=result.model_used,
+            tokensUsed=result.tokens_used,
+            blueprintId=req.blueprintId,
+            blueprintVersion=req.blueprintVersion,
+            clientId=req.clientId,
+            workerInstanceId=req.workerInstanceId,
+            startedAt=started_at.isoformat(),
+            completedAt=completed_at.isoformat(),
+            runtimeAdapter=runtime_adapter.name,
+        ),
+    )
+
+    logger.info(
+        "Run completed: runId=%s status=%s artifacts=%d adapter=%s duration=%dms",
+        run_id,
+        response.status,
+        len(response.artifacts),
+        runtime_adapter.name,
+        duration_ms,
+    )
+
+    return response
+
+
+def _error_response(
+    *,
+    run_id: str,
+    req: WorkerRunRequest,
+    started_at: datetime,
+    error_code: str,
+    error_message: str,
+) -> WorkerRunResponse:
+    """Build an error WorkerRunResponse."""
+    completed_at = datetime.now(timezone.utc)
+    duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
+    return WorkerRunResponse(
+        runId=run_id,
+        status="error",
+        blueprint=BlueprintInfo(
+            id=req.blueprintId,
+            version=req.blueprintVersion,
+            name=req.blueprintId,
+        ),
+        client=ClientInfo(id=req.clientId, name=req.clientId),
+        workerInstance=WorkerInstanceInfo(
+            instanceId=req.workerInstanceId,
+            blueprintId=req.blueprintId,
+        ),
+        resolvedConfig=ResolvedConfig(
+            model="unknown",
+            maxTokens=0,
+            temperature=0,
+            approvalRequired=True,
+            timeoutSeconds=0,
+        ),
+        artifacts=[],
+        metadata=RunMetadata(
+            durationMs=duration_ms,
+            modelUsed="none",
+            tokensUsed=0,
+            blueprintId=req.blueprintId,
+            blueprintVersion=req.blueprintVersion,
+            clientId=req.clientId,
+            workerInstanceId=req.workerInstanceId,
+            startedAt=started_at.isoformat(),
+            completedAt=completed_at.isoformat(),
+            runtimeAdapter=runtime_adapter.name if runtime_adapter else "none",
+        ),
+        error=RunError(code=error_code, message=error_message),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /paperclip/wake — legacy endpoint (preserved)
 # ---------------------------------------------------------------------------
 
 @app.post("/paperclip/wake", response_model=WakeResponse, status_code=202)
@@ -206,74 +345,53 @@ async def paperclip_wake(
     background_tasks: BackgroundTasks,
 ) -> WakeResponse:
     """Accept a Paperclip wake event and process it asynchronously."""
-    logger.info("Wake received: runId=%s agentId=%s companyId=%s",
-                payload.runId, payload.agentId, payload.companyId)
-
-    # TODO: Validate Paperclip signature / auth header if you add one.
-    # auth = request.headers.get("Authorization")
-
+    logger.info(
+        "Wake received: runId=%s agentId=%s companyId=%s",
+        payload.runId,
+        payload.agentId,
+        payload.companyId,
+    )
     background_tasks.add_task(_process_wake, payload.model_dump())
-
     return WakeResponse(
         accepted=True,
         runId=payload.runId,
         message="Wake accepted, processing in background",
     )
 
-# ---------------------------------------------------------------------------
-# Background processing
-# ---------------------------------------------------------------------------
 
 async def _process_wake(payload: Dict[str, Any]) -> None:
     """Forward the wake payload to Agent Zero and call back to Paperclip."""
     run_id = payload.get("runId", "unknown")
     agent_id = payload.get("agentId", "unknown")
+    logger.info("Processing wake run %s for agent %s", run_id, agent_id)
 
-    logger.info("Processing run %s for agent %s", run_id, agent_id)
-
-    # -- Step 1: Send task to Agent Zero ---------------------------------
     a0_token = _get_a0_api_token()
-    context_id: Optional[str] = None
     a0_response: Optional[str] = None
+    context_id: Optional[str] = None
     status = "completed"
     error_detail: Optional[str] = None
 
     if not a0_token:
-        logger.warning("No Agent Zero API token configured — "
-                       "set AGENTZERO_API_TOKEN in .env (from A0 UI: Settings > External Services)")
+        logger.warning("No Agent Zero API token configured")
         status = "error"
-        error_detail = "Worker gateway has no Agent Zero API token configured"
+        error_detail = "No Agent Zero API token configured"
     else:
         task_input = payload.get("input") or f"Execute task for run {run_id}"
         try:
             resp = await http_client.post(
                 f"{settings.agentzero_base_url}/api_message",
-                headers={
-                    "Content-Type": "application/json",
-                    "X-API-KEY": a0_token,
-                },
-                json={
-                    "message": task_input,
-                    "lifetime_hours": 24,
-                },
+                headers={"Content-Type": "application/json", "X-API-KEY": a0_token},
+                json={"message": task_input, "lifetime_hours": 24},
             )
             resp.raise_for_status()
             data = resp.json()
             a0_response = data.get("response", "")
             context_id = data.get("context_id")
-            logger.info("Agent Zero responded for run %s (context=%s): %s",
-                        run_id, context_id, a0_response[:200] if a0_response else "")
-        except httpx.HTTPStatusError as exc:
-            logger.error("Agent Zero HTTP %s for run %s: %s",
-                         exc.response.status_code, run_id, exc.response.text[:500])
-            status = "error"
-            error_detail = f"Agent Zero returned HTTP {exc.response.status_code}"
         except Exception as exc:
             logger.error("Agent Zero call failed for run %s: %s", run_id, exc)
             status = "error"
-            error_detail = f"Agent Zero unreachable: {exc}"
+            error_detail = str(exc)
 
-    # -- Step 2: Cleanup Agent Zero context ------------------------------
     if context_id and a0_token:
         try:
             await http_client.post(
@@ -281,36 +399,24 @@ async def _process_wake(payload: Dict[str, Any]) -> None:
                 headers={"Content-Type": "application/json", "X-API-KEY": a0_token},
                 json={"context_id": context_id},
             )
-            logger.info("Terminated Agent Zero context %s", context_id)
         except Exception as exc:
             logger.warning("Failed to terminate A0 context %s: %s", context_id, exc)
 
-    # -- Step 3: Call back to Paperclip ----------------------------------
-    await _callback_to_paperclip(run_id, {
-        "status": status,
-        "output": a0_response,
-        "error": error_detail,
-        "agentId": agent_id,
-    })
-
-
-async def _callback_to_paperclip(run_id: str, result: Dict[str, Any]) -> None:
-    """Report task results back to Paperclip.
-
-    TODO: The exact callback endpoint depends on your Paperclip HTTP adapter
-    configuration. The path below is a reasonable guess — adjust once you
-    confirm the adapter's expected callback contract.
-    """
     callback_url = f"{settings.paperclip_base_url}/api/runs/{run_id}/complete"
-    logger.info("Calling back to Paperclip: %s status=%s", callback_url, result.get("status"))
-
     try:
-        resp = await http_client.post(
+        await http_client.post(
             callback_url,
-            json=result,
+            json={"status": status, "output": a0_response, "error": error_detail, "agentId": agent_id},
             timeout=30.0,
         )
-        logger.info("Paperclip callback response: HTTP %s", resp.status_code)
     except Exception as exc:
-        # Don't crash — the callback is best-effort. Paperclip may also poll.
         logger.error("Paperclip callback failed for run %s: %s", run_id, exc)
+
+
+def _get_a0_api_token() -> str:
+    if settings.agentzero_api_token:
+        return settings.agentzero_api_token
+    if settings.agentzero_auth_login and settings.agentzero_auth_password:
+        creds = f"{settings.agentzero_auth_login}:{settings.agentzero_auth_password}"
+        return base64.b64encode(creds.encode()).decode()
+    return ""

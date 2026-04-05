@@ -1,0 +1,40 @@
+# Worker Instance — Psilodigital Inbox Worker
+# Instantiates the inbox-worker blueprint with client-specific overrides.
+
+instanceId: psilodigital.inbox-worker
+clientId: psilodigital
+blueprintId: inbox-worker
+blueprintVersion: "1.0.0"
+enabled: true
+
+# Client-specific overrides to blueprint defaults
+overrides:
+  model: openai/gpt-4o-mini
+  temperature: 0.3
+  approvalRequired: true
+  maxConcurrentRuns: 2
+  timeoutSeconds: 90
+
+  # Override specific policy values
+  policies:
+    approval:
+      # Psilodigital wants to auto-archive spam and auto-forward internal
+      overrides:
+        spam:
+          approval: none
+        internal:
+          approval: none
+
+    model:
+      # Psilodigital uses the default model policy
+      default: openai/gpt-4o-mini
+
+# Client-specific context injected into worker runs
+contextFiles:
+  - ../context/company-profile.md
+  - ../context/brand-voice.md
+
+# Metadata
+notes: >
+  First worker instance for internal dogfooding.
+  All replies require human approval in v1.

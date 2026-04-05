@@ -1,0 +1,39 @@
+# Memory Policy — Inbox Worker
+# Defines what the worker remembers across runs.
+
+id: memory-policy
+name: Memory Policy
+description: >
+  Controls what information persists between worker runs,
+  scoped per client for isolation.
+
+enabled: true
+
+# What to remember
+store:
+  - type: email_classification_history
+    description: Past classifications for pattern detection and consistency.
+    retention: 90_days
+    scope: per_client
+
+  - type: reply_templates
+    description: Approved reply templates that worked well.
+    retention: indefinite
+    scope: per_client
+
+  - type: sender_context
+    description: Known senders and their previous interaction history.
+    retention: 180_days
+    scope: per_client
+
+# What NOT to remember
+exclude:
+  - email_body_content  # Do not persist raw email content long-term
+  - attachment_data     # Do not store attachment contents
+
+# Isolation
+isolation:
+  level: per_client
+  description: >
+    Each client's memory is completely isolated.
+    No cross-client data leakage is permitted.

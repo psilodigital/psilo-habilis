@@ -1,0 +1,23 @@
+# Lead Agent — Inbox Worker
+# Orchestrates the email triage flow by coordinating sub-agents.
+
+id: lead
+name: Lead Agent
+role: orchestrator
+description: >
+  Coordinates the inbox triage pipeline: receives email input,
+  delegates to classifier and reply-drafter, enforces policies,
+  and assembles the final run result.
+
+responsibilities:
+  - Parse and validate inbound email payload
+  - Invoke classifier agent for intent/urgency analysis
+  - Invoke reply-drafter agent when a reply is warranted
+  - Apply approval policy to determine if reply can auto-send
+  - Assemble structured run result with all artifacts
+
+delegates_to:
+  - classifier
+  - reply-drafter
+
+model: default  # Uses the model from pack defaults or client override
