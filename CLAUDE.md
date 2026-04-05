@@ -136,6 +136,18 @@ All services communicate over the `workerstack` Docker bridge network. Container
 - Structured JSON logging
 - Remaining TODOs: Paperclip auth header validation, Paperclip callback endpoint confirmation
 
+## Project Documentation
+
+Read these docs at the start of every session to stay aligned:
+
+- `docs/tasks.md` — **Living task tracker.** What is done, what is next, what is blocked. Update after every session.
+- `docs/mission.md` — Mission, vision, product principles, architecture rules, decision framework.
+- `docs/decisions.md` — Architecture Decision Records (ADRs). Append-only log of key choices and rationale.
+- `docs/local-dev.md` — Local setup, service map, post-boot config, model aliases, troubleshooting.
+- `docs/coolify.md` — Deployment mapping for Hetzner via Coolify.
+
+**After every work session:** Update `docs/tasks.md` to reflect what was completed and what changed.
+
 ## Deployment
 
 Target platform is Hetzner via Coolify using the Docker Compose build pack. Public-facing services: Paperclip, LiteLLM, and the dashboard. Postgres, Redis, and Agent Zero should remain internal-only.
