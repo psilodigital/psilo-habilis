@@ -1,6 +1,8 @@
-# Habilis — Psilodigital Worker Stack
+# Habilis — Psilodigital Worker Platform
 
-Docker Compose infrastructure that wires Paperclip (orchestration), LiteLLM (model gateway), Agent Zero (worker runtime), and a FastAPI bridge service into a single deployable stack. Target deployment: Hetzner via Coolify.
+A multi-tenant worker operating system for small and medium businesses. Businesses can activate AI workers for real operational jobs — inbox management, content creation, booking operations, CRM follow-up, and admin support.
+
+Built as a modular Docker Compose stack: Paperclip (orchestration), LiteLLM (model gateway), Agent Zero (worker runtime), and a FastAPI bridge service. Target deployment: Hetzner via Coolify.
 
 ## Architecture
 
@@ -126,7 +128,7 @@ In the Agent Zero UI, set the chat model to use LiteLLM as an OpenAI-compatible 
 - Provider: **OpenAI Compatible**
 - Base URL: `http://litellm:4000`
 - API Key: your `LITELLM_MASTER_KEY` value
-- Model: one of the models in `litellm/config.yaml` (e.g. `gpt-4.1-mini`)
+- Model: one of the models in `services/litellm/config.yaml` (e.g. `gpt-4.1-mini`)
 
 ### 3. Configure Paperclip HTTP adapter
 
@@ -150,23 +152,35 @@ If Agent Zero is unreachable or the API token is missing, the gateway logs the e
 ## Project Structure
 
 ```
+habilis/
+├── apps/
+│   ├── dashboard/                  Next.js customer product (planned)
+│   └── worker-gateway/             FastAPI bridge service
+│       ├── app.py
+│       ├── Dockerfile
+│       └── requirements.txt
+├── packages/
+│   ├── shared-types/               Cross-service type definitions
+│   ├── worker-definitions/         Worker configs and schemas
+│   ├── connector-sdk/              Connector SDK
+│   ├── ui/                         Shared UI components
+│   └── config/                     Shared configuration
+├── services/
+│   ├── paperclip/                  Control plane (Dockerfile)
+│   ├── litellm/                    Model gateway (config.yaml)
+│   └── agentzero/                  Worker runtime (placeholder)
+├── infra/
+│   ├── postgres/init/              DB init scripts
+│   ├── docker/                     Docker configs
+│   ├── coolify/                    Deployment configs
+│   ├── scripts/                    setup.sh, smoke-test.sh
+│   └── env/                        Environment templates
+├── docs/
+│   └── mission.md                  Mission and architecture vision
 ├── docker-compose.yml              Full stack definition
 ├── .env.example                    Environment variable template
 ├── Makefile                        Dev workflow shortcuts
-├── worker-gateway/
-│   ├── app.py                      Bridge service (FastAPI)
-│   ├── Dockerfile
-│   └── requirements.txt
-├── paperclip/
-│   └── Dockerfile                  Installs paperclipai CLI
-├── litellm/
-│   └── config.yaml                 Model routing (OpenAI, Anthropic, Google, Groq)
-├── infra/
-│   └── postgres/init/
-│       └── 01-create-dbs.sql       Creates paperclip + litellm databases
-└── scripts/
-    ├── setup.sh                    .env generator with random secrets
-    └── smoke-test.sh               Post-boot validation
+└── CLAUDE.md                       AI assistant guidance
 ```
 
 ## Coolify Deployment
@@ -174,6 +188,7 @@ If Agent Zero is unreachable or the API token is missing, the gateway logs the e
 Use the **Docker Compose build pack** in Coolify and point it to this repo.
 
 **Public-facing services** (attach domains):
+- `app.yourdomain.com` → Dashboard, port 3000
 - `paperclip.yourdomain.com` → Paperclip, port 3100
 - `llm.yourdomain.com` → LiteLLM, port 4000
 

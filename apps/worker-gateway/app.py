@@ -95,9 +95,39 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Psilodigital Worker Gateway",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
+
+
+# ---------------------------------------------------------------------------
+# Root / info
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+async def root():
+    """Minimal root response for load balancers and quick checks."""
+    return {"service": "worker-gateway", "version": "0.3.0", "status": "ok"}
+
+
+@app.get("/info")
+async def info():
+    """Service metadata for observability."""
+    return {
+        "service": "worker-gateway",
+        "version": "0.3.0",
+        "endpoints": {
+            "health": "/healthz",
+            "wake": "POST /paperclip/wake",
+            "info": "/info",
+        },
+        "downstream": {
+            "agentzero": settings.agentzero_base_url,
+            "litellm": settings.litellm_base_url,
+            "paperclip": settings.paperclip_base_url,
+        },
+        "agentzero_token_configured": bool(_get_a0_api_token()),
+    }
 
 # ---------------------------------------------------------------------------
 # Models
