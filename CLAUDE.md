@@ -4,15 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Habilis (internally "Psilodigital Worker Stack") is a Docker Compose-based infrastructure stack that wires together:
+Habilis (internally "Psilodigital Worker Platform") is a multi-tenant worker operating system for small and medium businesses, built as a Docker Compose-based modular stack:
 
-- **Paperclip** — control plane for agent orchestration (Node.js, port 3100)
-- **LiteLLM** — unified model gateway proxying OpenAI, Anthropic, Google, Groq (port 4000)
+- **Dashboard** — Next.js commercial product surface (planned, `apps/dashboard/`)
+- **worker-gateway** — Python/FastAPI webhook bridge between Paperclip and Agent Zero (`apps/worker-gateway/`, port 8080)
+- **Paperclip** — control plane for agent orchestration (`services/paperclip/`, Node.js, port 3100)
+- **LiteLLM** — unified model gateway proxying OpenAI, Anthropic, Google, Groq (`services/litellm/`, port 4000)
 - **Agent Zero** — separate worker runtime/UI (port 50080)
-- **worker-gateway** — Python/FastAPI webhook bridge between Paperclip and Agent Zero (port 8080)
 - **Postgres 17** + **Redis 7** — shared infrastructure
 
 The worker-gateway bridges Paperclip HTTP adapter wake events (`POST /paperclip/wake`) to Agent Zero via its External API (`POST /api_message`), with async processing and Paperclip callbacks.
+
+## Repository Structure
+
+```
+habilis/
+├── apps/
+│   ├── dashboard/            # Next.js — customer-facing product (planned)
+│   └── worker-gateway/       # FastAPI — orchestration-to-execution bridge
+├── packages/
+│   ├── shared-types/         # Cross-service type definitions
+│   ├── worker-definitions/   # Worker configs, schemas, capabilities
+│   ├── connector-sdk/        # SDK for building connectors
+│   ├── ui/                   # Shared UI components
+│   └── config/               # Shared configuration
+├── services/
+│   ├── paperclip/            # Control plane (Dockerfile)
+│   ├── litellm/              # Model gateway (config.yaml)
+│   └── agentzero/            # Worker runtime (placeholder)
+├── infra/
+│   ├── postgres/init/        # DB init scripts
+│   ├── docker/               # Additional Docker configs
+│   ├── coolify/              # Deployment configs
+│   ├── scripts/              # setup.sh, smoke-test.sh
+│   └── env/                  # Environment templates
+├── docs/                     # Mission, architecture, decisions
+├── docker-compose.yml        # Full stack definition
+├── Makefile                  # Dev workflow shortcuts
+├── .env.example              # Environment variable template
+└── CLAUDE.md                 # This file
+```
 
 ## Commands
 
@@ -84,12 +115,13 @@ All services communicate over the `workerstack` Docker bridge network. Container
 - `docker-compose.yml` — full stack definition; all services, volumes, healthchecks
 - `.env.example` — all required environment variables with defaults
 - `Makefile` — dev workflow shortcuts (`make setup`, `make build`, `make test`, etc.)
-- `worker-gateway/app.py` — bridge service (FastAPI, Agent Zero integration, Paperclip callbacks)
-- `litellm/config.yaml` — model routing config (which providers/models are available)
-- `paperclip/Dockerfile` — installs `paperclipai` CLI globally via npm
+- `apps/worker-gateway/app.py` — bridge service (FastAPI, Agent Zero integration, Paperclip callbacks)
+- `services/litellm/config.yaml` — model routing config (which providers/models are available)
+- `services/paperclip/Dockerfile` — installs `paperclipai` CLI globally via npm
 - `infra/postgres/init/01-create-dbs.sql` — creates `paperclip` and `litellm` databases on first boot
-- `scripts/setup.sh` — generates `.env` with random secrets
-- `scripts/smoke-test.sh` — post-boot validation (13 checks)
+- `infra/scripts/setup.sh` — generates `.env` with random secrets
+- `infra/scripts/smoke-test.sh` — post-boot validation (13 checks)
+- `docs/mission.md` — full mission, vision, and architecture document
 
 ## Environment Variables
 
@@ -106,4 +138,4 @@ All services communicate over the `workerstack` Docker bridge network. Container
 
 ## Deployment
 
-Target platform is Hetzner via Coolify using the Docker Compose build pack. Public-facing services: Paperclip, LiteLLM, and a future dashboard. Postgres, Redis, and Agent Zero should remain internal-only.
+Target platform is Hetzner via Coolify using the Docker Compose build pack. Public-facing services: Paperclip, LiteLLM, and the dashboard. Postgres, Redis, and Agent Zero should remain internal-only.

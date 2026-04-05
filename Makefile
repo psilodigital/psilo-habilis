@@ -4,7 +4,7 @@ help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Generate .env from .env.example with random secrets
-	@bash scripts/setup.sh
+	@bash infra/scripts/setup.sh
 
 validate: ## Validate docker-compose.yml
 	docker compose config --quiet && echo "docker-compose.yml is valid"
@@ -31,7 +31,7 @@ restart: ## Restart all services
 	docker compose restart
 
 test: ## Run smoke tests against running stack
-	@bash scripts/smoke-test.sh
+	@bash infra/scripts/smoke-test.sh
 
 # --- Per-service shortcuts ---
 
