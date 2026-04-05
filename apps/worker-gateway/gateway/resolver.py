@@ -1,13 +1,13 @@
 """
-Blueprint + Client + Instance resolver.
+Blueprint + Company + Instance resolver.
 
 Loads YAML config files from disk and merges them into a resolved
 configuration for a worker run.
 
-Resolution order (later wins):
-  1. Blueprint defaults (from pack.yaml)
-  2. Client instance overrides (from *.instance.yaml)
-  3. Per-request run overrides (from the API request body)
+Merge precedence (later wins):
+  1. Blueprint defaults    — from worker-packs/<id>/pack.yaml → defaults
+  2. Instance overrides    — from clients/<company>/workers/<w>.instance.yaml → overrides
+  3. Per-request overrides — from the API request body → runOverrides
 """
 
 from pathlib import Path
@@ -20,7 +20,7 @@ from .logging import logger
 
 
 class ResolutionError(Exception):
-    """Raised when blueprint, client, or instance cannot be resolved."""
+    """Raised when blueprint, company, or instance cannot be resolved."""
 
     def __init__(self, code: str, message: str):
         self.code = code
@@ -65,33 +65,33 @@ def resolve_blueprint(blueprint_id: str, version: str) -> Dict[str, Any]:
     return blueprint
 
 
-def resolve_client(client_id: str) -> Dict[str, Any]:
-    """Load client company config from clients/<id>/company.yaml."""
-    company_file = Path(settings.repo_root) / "clients" / client_id / "company.yaml"
+def resolve_company(company_id: str) -> Dict[str, Any]:
+    """Load company config from clients/<id>/company.yaml."""
+    company_file = Path(settings.repo_root) / "clients" / company_id / "company.yaml"
 
     if not company_file.exists():
         raise ResolutionError(
-            code="CLIENT_NOT_FOUND",
-            message=f"Client '{client_id}' not found at {company_file}",
+            code="COMPANY_NOT_FOUND",
+            message=f"Company '{company_id}' not found at {company_file}",
         )
 
-    client = _load_yaml(company_file)
-    logger.info("Resolved client: %s (%s)", client_id, client.get("name", "unnamed"))
-    return client
+    company = _load_yaml(company_file)
+    logger.info("Resolved company: %s (%s)", company_id, company.get("name", "unnamed"))
+    return company
 
 
 def resolve_worker_instance(
-    client_id: str, instance_id: str
+    company_id: str, instance_id: str
 ) -> Dict[str, Any]:
-    """Load worker instance config from clients/<client>/workers/<worker>.instance.yaml."""
-    # Instance ID format: "clientId.workerName" → file: workerName.instance.yaml
+    """Load worker instance config from clients/<company>/workers/<worker>.instance.yaml."""
+    # Instance ID format: "companyId.workerName" → file: workerName.instance.yaml
     parts = instance_id.split(".", 1)
-    if len(parts) != 2 or parts[0] != client_id:
+    if len(parts) != 2 or parts[0] != company_id:
         raise ResolutionError(
             code="INVALID_INSTANCE_ID",
             message=(
                 f"Instance ID '{instance_id}' must be formatted as "
-                f"'{client_id}.<worker-name>'"
+                f"'{company_id}.<worker-name>'"
             ),
         )
 
@@ -99,7 +99,7 @@ def resolve_worker_instance(
     instance_file = (
         Path(settings.repo_root)
         / "clients"
-        / client_id
+        / company_id
         / "workers"
         / f"{worker_name}.instance.yaml"
     )
@@ -122,9 +122,9 @@ def resolve_worker_instance(
     return instance
 
 
-def load_client_context(client_id: str) -> Dict[str, str]:
-    """Load client context files (company-profile.md, brand-voice.md, etc.)."""
-    context_dir = Path(settings.repo_root) / "clients" / client_id / "context"
+def load_company_context(company_id: str) -> Dict[str, str]:
+    """Load company context files (company-profile.md, brand-voice.md, etc.)."""
+    context_dir = Path(settings.repo_root) / "clients" / company_id / "context"
     context: Dict[str, str] = {}
 
     if not context_dir.exists():
@@ -134,7 +134,7 @@ def load_client_context(client_id: str) -> Dict[str, str]:
         context[md_file.stem] = md_file.read_text(encoding="utf-8")
 
     if context:
-        logger.info("Loaded %d context files for client %s", len(context), client_id)
+        logger.info("Loaded %d context files for company %s", len(context), company_id)
 
     return context
 
@@ -145,11 +145,16 @@ def merge_config(
     run_overrides: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Merge configuration from blueprint defaults → instance overrides → run overrides.
+    Merge configuration with explicit precedence (later wins):
 
-    Returns a flat resolved config dict.
+      1. Blueprint defaults    — pack.yaml → defaults
+      2. Instance overrides    — *.instance.yaml → overrides
+      3. Per-request overrides — request body → runOverrides
+
+    Returns a flat resolved config dict with these keys:
+      model, maxTokens, temperature, approvalRequired, timeoutSeconds
     """
-    # Start with blueprint defaults
+    # Layer 1: blueprint defaults
     defaults = blueprint.get("defaults", {})
     merged = {
         "model": defaults.get("model", "openai/gpt-4o-mini"),
@@ -159,13 +164,13 @@ def merge_config(
         "timeoutSeconds": defaults.get("timeoutSeconds", 120),
     }
 
-    # Apply instance overrides
+    # Layer 2: instance overrides
     overrides = instance.get("overrides", {})
     for key in merged:
         if key in overrides:
             merged[key] = overrides[key]
 
-    # Apply per-request run overrides
+    # Layer 3: per-request run overrides
     if run_overrides:
         for key in merged:
             if key in run_overrides and run_overrides[key] is not None:
@@ -176,7 +181,7 @@ def merge_config(
 
 
 def resolve_all(
-    client_id: str,
+    company_id: str,
     worker_instance_id: str,
     blueprint_id: str,
     blueprint_version: str,
@@ -184,12 +189,12 @@ def resolve_all(
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, str]]:
     """
     Full resolution pipeline. Returns:
-      (blueprint, client, instance, merged_config, client_context)
+      (blueprint, company, instance, merged_config, company_context)
     """
     blueprint = resolve_blueprint(blueprint_id, blueprint_version)
-    client = resolve_client(client_id)
-    instance = resolve_worker_instance(client_id, worker_instance_id)
-    client_context = load_client_context(client_id)
+    company = resolve_company(company_id)
+    instance = resolve_worker_instance(company_id, worker_instance_id)
+    company_context = load_company_context(company_id)
     merged_config = merge_config(blueprint, instance, run_overrides)
 
-    return blueprint, client, instance, merged_config, client_context
+    return blueprint, company, instance, merged_config, company_context

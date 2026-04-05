@@ -36,7 +36,7 @@ class RunOverrides(BaseModel):
 
 
 class WorkerRunRequest(BaseModel):
-    clientId: str
+    companyId: str
     workerInstanceId: str
     blueprintId: str
     blueprintVersion: str
@@ -55,7 +55,7 @@ class BlueprintInfo(BaseModel):
     name: str
 
 
-class ClientInfo(BaseModel):
+class CompanyInfo(BaseModel):
     id: str
     name: str
 
@@ -93,7 +93,7 @@ class RunMetadata(BaseModel):
     tokensUsed: int
     blueprintId: str
     blueprintVersion: str
-    clientId: str
+    companyId: str
     workerInstanceId: str
     startedAt: str
     completedAt: str
@@ -110,7 +110,7 @@ class WorkerRunResponse(BaseModel):
     runId: str
     status: str  # completed | awaiting_approval | running | error | timeout
     blueprint: BlueprintInfo
-    client: ClientInfo
+    company: CompanyInfo
     workerInstance: WorkerInstanceInfo
     resolvedConfig: ResolvedConfig
     classification: Optional[Classification] = None

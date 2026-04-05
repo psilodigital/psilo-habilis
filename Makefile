@@ -33,6 +33,14 @@ restart: ## Restart all services
 test: ## Run smoke tests against running stack
 	@bash infra/scripts/smoke-test.sh
 
+# --- v1 thin-slice shortcuts ---
+
+gateway-dev: ## Run worker-gateway locally (port 8090, stub adapter)
+	cd apps/worker-gateway && uvicorn app:app --host 127.0.0.1 --port 8090 --reload
+
+gateway-smoke: ## Run v1 smoke tests against local gateway (port 8090)
+	@bash infra/scripts/smoke-v1.sh localhost:8090
+
 # --- Per-service shortcuts ---
 
 logs-%: ## Tail logs for a specific service (e.g. make logs-worker-gateway)

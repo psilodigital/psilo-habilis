@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "INFO"
 
+    # Runtime adapter: "stub" (default) or "agentzero"
+    runtime_adapter: str = "stub"
+
     # Repo root — used to locate worker-packs/ and clients/ on disk
     repo_root: str = str(_find_repo_root())
 

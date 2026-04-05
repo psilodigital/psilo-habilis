@@ -6,8 +6,8 @@
  */
 
 export interface WorkerRunRequest {
-  /** Client company identifier (e.g. "psilodigital") */
-  clientId: string;
+  /** Company identifier (e.g. "psilodigital") */
+  companyId: string;
 
   /** Worker instance identifier (e.g. "psilodigital.inbox-worker") */
   workerInstanceId: string;

@@ -1,5 +1,5 @@
 {
-  "clientId": "psilodigital",
+  "companyId": "psilodigital",
   "workerInstanceId": "psilodigital.inbox-worker",
   "blueprintId": "inbox-worker",
   "blueprintVersion": "1.0.0",

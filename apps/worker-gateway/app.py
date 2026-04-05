@@ -13,16 +13,13 @@ Routes:
 
 import asyncio
 import base64
-import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-
+from fastapi import BackgroundTasks, FastAPI, Request
 from gateway.config import settings
 from gateway.logging import logger
 from gateway.models import (
@@ -32,7 +29,7 @@ from gateway.models import (
     WorkerRunRequest,
     WorkerRunResponse,
     BlueprintInfo,
-    ClientInfo,
+    CompanyInfo,
     WorkerInstanceInfo,
     ResolvedConfig,
     RunMetadata,
@@ -55,10 +52,19 @@ async def lifespan(app: FastAPI):
     global http_client, runtime_adapter
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
-    # v1: Use stub adapter by default.
-    # Switch to AgentZeroAdapter when A0 integration is confirmed working.
-    # To test with A0: set RUNTIME_ADAPTER=agentzero in env (future).
-    runtime_adapter = StubRuntimeAdapter()
+    # Select runtime adapter via RUNTIME_ADAPTER env var.
+    # Valid values: "stub" (default), "agentzero"
+    adapter_name = settings.runtime_adapter
+    if adapter_name == "agentzero":
+        runtime_adapter = AgentZeroAdapter(http_client)
+        logger.info("Runtime adapter: agentzero (live Agent Zero integration)")
+    else:
+        runtime_adapter = StubRuntimeAdapter()
+        if adapter_name != "stub":
+            logger.warning(
+                "Unknown RUNTIME_ADAPTER '%s', falling back to 'stub'", adapter_name
+            )
+
     logger.info(
         "Worker gateway v1.0.0 started — adapter=%s, repo_root=%s",
         runtime_adapter.name,
@@ -155,7 +161,7 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
     """
     Execute a worker task.
 
-    1. Resolve blueprint + client + instance configs from disk
+    1. Resolve blueprint + company + instance configs from disk
     2. Merge config (blueprint defaults → instance overrides → run overrides)
     3. Execute via runtime adapter
     4. Return structured response
@@ -164,9 +170,9 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
     started_at = datetime.now(timezone.utc)
 
     logger.info(
-        "POST /v1/workers/run — runId=%s client=%s instance=%s blueprint=%s@%s task=%s",
+        "POST /v1/workers/run — runId=%s company=%s instance=%s blueprint=%s@%s task=%s",
         run_id,
-        req.clientId,
+        req.companyId,
         req.workerInstanceId,
         req.blueprintId,
         req.blueprintVersion,
@@ -175,8 +181,8 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
 
     # --- Step 1: Resolve ---
     try:
-        blueprint, client, instance, merged_config, client_context = resolve_all(
-            client_id=req.clientId,
+        blueprint, company, instance, merged_config, company_context = resolve_all(
+            company_id=req.companyId,
             worker_instance_id=req.workerInstanceId,
             blueprint_id=req.blueprintId,
             blueprint_version=req.blueprintVersion,
@@ -219,7 +225,7 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
         input_data=req.input.data,
         merged_config=merged_config,
         blueprint=blueprint,
-        client_context=client_context,
+        client_context=company_context,
     )
 
     completed_at = datetime.now(timezone.utc)
@@ -248,9 +254,9 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
             version=req.blueprintVersion,
             name=blueprint.get("name", req.blueprintId),
         ),
-        client=ClientInfo(
-            id=req.clientId,
-            name=client.get("name", req.clientId),
+        company=CompanyInfo(
+            id=req.companyId,
+            name=company.get("name", req.companyId),
         ),
         workerInstance=WorkerInstanceInfo(
             instanceId=req.workerInstanceId,
@@ -265,7 +271,7 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
             tokensUsed=result.tokens_used,
             blueprintId=req.blueprintId,
             blueprintVersion=req.blueprintVersion,
-            clientId=req.clientId,
+            companyId=req.companyId,
             workerInstanceId=req.workerInstanceId,
             startedAt=started_at.isoformat(),
             completedAt=completed_at.isoformat(),
@@ -305,7 +311,7 @@ def _error_response(
             version=req.blueprintVersion,
             name=req.blueprintId,
         ),
-        client=ClientInfo(id=req.clientId, name=req.clientId),
+        company=CompanyInfo(id=req.companyId, name=req.companyId),
         workerInstance=WorkerInstanceInfo(
             instanceId=req.workerInstanceId,
             blueprintId=req.blueprintId,
@@ -324,7 +330,7 @@ def _error_response(
             tokensUsed=0,
             blueprintId=req.blueprintId,
             blueprintVersion=req.blueprintVersion,
-            clientId=req.clientId,
+            companyId=req.companyId,
             workerInstanceId=req.workerInstanceId,
             startedAt=started_at.isoformat(),
             completedAt=completed_at.isoformat(),

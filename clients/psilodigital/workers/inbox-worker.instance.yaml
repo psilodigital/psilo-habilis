@@ -2,7 +2,7 @@
 # Instantiates the inbox-worker blueprint with client-specific overrides.
 
 instanceId: psilodigital.inbox-worker
-clientId: psilodigital
+companyId: psilodigital
 blueprintId: inbox-worker
 blueprintVersion: "1.0.0"
 enabled: true

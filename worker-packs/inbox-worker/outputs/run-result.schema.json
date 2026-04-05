@@ -83,7 +83,7 @@
         "blueprintVersion": {
           "type": "string"
         },
-        "clientId": {
+        "companyId": {
           "type": "string"
         },
         "workerInstanceId": {

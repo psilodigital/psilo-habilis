@@ -50,7 +50,7 @@ header "2. Sales Inquiry (→ sales_lead, awaiting_approval)"
 SALES=$(curl -sf -X POST "${URL}/v1/workers/run" \
   -H "Content-Type: application/json" \
   -d '{
-    "clientId": "psilodigital",
+    "companyId": "psilodigital",
     "workerInstanceId": "psilodigital.inbox-worker",
     "blueprintId": "inbox-worker",
     "blueprintVersion": "1.0.0",
@@ -74,7 +74,7 @@ header "3. Support Request (→ support, high urgency)"
 SUPPORT=$(curl -sf -X POST "${URL}/v1/workers/run" \
   -H "Content-Type: application/json" \
   -d '{
-    "clientId": "psilodigital",
+    "companyId": "psilodigital",
     "workerInstanceId": "psilodigital.inbox-worker",
     "blueprintId": "inbox-worker",
     "blueprintVersion": "1.0.0",
@@ -93,7 +93,7 @@ header "4. Spam Detection (→ spam, completed, no reply)"
 SPAM=$(curl -sf -X POST "${URL}/v1/workers/run" \
   -H "Content-Type: application/json" \
   -d '{
-    "clientId": "psilodigital",
+    "companyId": "psilodigital",
     "workerInstanceId": "psilodigital.inbox-worker",
     "blueprintId": "inbox-worker",
     "blueprintVersion": "1.0.0",
@@ -120,7 +120,7 @@ header "5. Error Cases"
 ERR_CLIENT=$(curl -sf -X POST "${URL}/v1/workers/run" \
   -H "Content-Type: application/json" \
   -d '{
-    "clientId": "nonexistent",
+    "companyId": "nonexistent",
     "workerInstanceId": "nonexistent.inbox-worker",
     "blueprintId": "inbox-worker",
     "blueprintVersion": "1.0.0",
@@ -128,12 +128,12 @@ ERR_CLIENT=$(curl -sf -X POST "${URL}/v1/workers/run" \
     "input": {"message": "test"}
   }')
 
-check "Error: unknown client returns CLIENT_NOT_FOUND" '"code":"CLIENT_NOT_FOUND"' "$ERR_CLIENT"
+check "Error: unknown company returns COMPANY_NOT_FOUND" '"code":"COMPANY_NOT_FOUND"' "$ERR_CLIENT"
 
 ERR_TASK=$(curl -sf -X POST "${URL}/v1/workers/run" \
   -H "Content-Type: application/json" \
   -d '{
-    "clientId": "psilodigital",
+    "companyId": "psilodigital",
     "workerInstanceId": "psilodigital.inbox-worker",
     "blueprintId": "inbox-worker",
     "blueprintVersion": "1.0.0",

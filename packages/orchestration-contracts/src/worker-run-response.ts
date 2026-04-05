@@ -33,8 +33,8 @@ export interface WorkerRunResponse {
     name: string;
   };
 
-  /** Resolved client info */
-  client: {
+  /** Resolved company info */
+  company: {
     id: string;
     name: string;
   };
@@ -100,8 +100,8 @@ export interface RunMetadata {
   blueprintId: string;
   blueprintVersion: string;
 
-  /** Client identifier */
-  clientId: string;
+  /** Company identifier */
+  companyId: string;
 
   /** Worker instance identifier */
   workerInstanceId: string;
@@ -132,7 +132,7 @@ export interface RunError {
  */
 export interface ApprovalRequest {
   runId: string;
-  clientId: string;
+  companyId: string;
   workerInstanceId: string;
   artifactIndex: number;
   artifact: Artifact;
