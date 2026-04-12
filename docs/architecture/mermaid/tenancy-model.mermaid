@@ -1,0 +1,20 @@
+flowchart TB
+    ROOT["One Psilodigital Platform Deployment"]
+
+    ROOT --> CO1["Company: Psilodigital"]
+    ROOT --> CO2["Company: Client A"]
+    ROOT --> CO3["Company: Client B"]
+
+    CO1 --> W11["Inbox Worker"]
+    CO1 --> W12["Content Worker"]
+    CO1 --> W13["Engineering Worker"]
+
+    CO2 --> W21["Inbox Worker"]
+    CO2 --> W22["Booking Ops Worker"]
+
+    CO3 --> W31["Inbox Worker"]
+    CO3 --> W32["Admin Worker"]
+
+    W11 --> P11["Agent Zero Project: psilodigital"]
+    W21 --> P21["Agent Zero Project: client-a"]
+    W31 --> P31["Agent Zero Project: client-b"]

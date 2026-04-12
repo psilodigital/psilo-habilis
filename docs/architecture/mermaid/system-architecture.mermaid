@@ -1,0 +1,90 @@
+flowchart TB
+    subgraph U["Users"]
+        SMB["Client Business Users"]
+        PSI["Psilodigital Internal Team"]
+    end
+
+    subgraph APP["Product Surface"]
+        DASH["Dashboard App<br/>Next.js"]
+    end
+
+    subgraph CTRL["Control Plane"]
+        PAPER["Paperclip<br/>Companies • Teams • Tasks • Budgets • Approvals"]
+    end
+
+    subgraph ORCH["Execution Boundary"]
+        GATE["Worker Gateway<br/>Blueprint Resolution • Merge Logic • Runtime Routing"]
+    end
+
+    subgraph DEF["Reusable Product Layer"]
+        PACKS["Worker Packs<br/>inbox-worker<br/>content-worker<br/>booking-ops-worker"]
+        CLIENTS["Company Instances<br/>psilodigital<br/>client-a<br/>client-b"]
+        CONTRACTS["Shared Contracts<br/>WorkerRunRequest / WorkerRunResponse"]
+    end
+
+    subgraph RUN["Runtime Layer"]
+        A0["Agent Zero<br/>Worker Runtime"]
+        PROJ1["Project: Psilodigital"]
+        PROJ2["Project: Client A"]
+        PROJ3["Project: Client B"]
+    end
+
+    subgraph MODEL["Model Layer"]
+        LLM["LiteLLM Gateway"]
+        OPENAI["OpenAI"]
+        ANTH["Anthropic"]
+        GOOGLE["Google"]
+        GROQ["Groq / Others"]
+    end
+
+    subgraph TOOLS["Tool / Connector Layer"]
+        MCP["MCP / Connector SDK"]
+        GMAIL["Gmail / Email"]
+        CAL["Calendar"]
+        CRM["CRM"]
+        BOOK["PsiloBooking API"]
+        DOCS["Docs / Knowledge"]
+    end
+
+    subgraph DATA["State / Infra"]
+        PG["Postgres"]
+        REDIS["Redis"]
+        FILES["Files / Context / Config"]
+    end
+
+    SMB --> DASH
+    PSI --> DASH
+
+    DASH --> PAPER
+    DASH --> GATE
+
+    PAPER --> GATE
+
+    GATE --> PACKS
+    GATE --> CLIENTS
+    GATE --> CONTRACTS
+
+    GATE --> A0
+    A0 --> PROJ1
+    A0 --> PROJ2
+    A0 --> PROJ3
+
+    A0 --> LLM
+    LLM --> OPENAI
+    LLM --> ANTH
+    LLM --> GOOGLE
+    LLM --> GROQ
+
+    A0 --> MCP
+    MCP --> GMAIL
+    MCP --> CAL
+    MCP --> CRM
+    MCP --> BOOK
+    MCP --> DOCS
+
+    PAPER --> PG
+    GATE --> PG
+    GATE --> REDIS
+    GATE --> FILES
+    A0 --> FILES
+    LLM --> PG

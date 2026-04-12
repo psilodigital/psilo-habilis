@@ -1,0 +1,8 @@
+flowchart LR
+    BP["Worker Blueprint<br/>inbox-worker@1.0.0"] --> I1["Psilodigital Instance<br/>psilodigital.inbox-worker"]
+    BP --> I2["Client A Instance<br/>client-a.inbox-worker"]
+    BP --> I3["Client B Instance<br/>client-b.inbox-worker"]
+
+    I1 --> C1["Psilodigital Context<br/>docs • tone • tools • secrets • memory"]
+    I2 --> C2["Client A Context<br/>docs • tone • tools • secrets • memory"]
+    I3 --> C3["Client B Context<br/>docs • tone • tools • secrets • memory"]

@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant P as Paperclip / Dashboard
+    participant G as Worker Gateway
+    participant B as Worker Blueprint
+    participant C as Company Instance
+    participant A as Agent Zero
+    participant L as LiteLLM
+    participant T as Tools / Connectors
+
+    P->>G: POST /v1/workers/run
+    G->>B: Load blueprint
+    G->>C: Load company + worker instance
+    G->>G: Merge config + validate request
+    G->>A: Execute worker for company project
+    A->>L: Request model through gateway
+    L-->>A: Model response
+    A->>T: Use tools if needed
+    T-->>A: Tool results
+    A-->>G: Structured worker result
+    G-->>P: WorkerRunResponse
