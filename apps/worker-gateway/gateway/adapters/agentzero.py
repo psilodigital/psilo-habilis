@@ -2,20 +2,8 @@
 Agent Zero runtime adapter.
 
 Integrates with Agent Zero's External API to execute worker tasks.
-
-STATUS: Scaffold only. Real integration requires:
-  - Agent Zero project-scoped execution (one project per client)
-  - Structured output parsing from A0 responses
-  - Persona/playbook injection into A0 message context
-  - A0 API token management per-project
-
-TODO:
-  1. Confirm A0 /api_message supports project scoping
-  2. Implement persona/playbook prompt assembly
-  3. Parse A0 free-text response into structured Classification + Artifacts
-  4. Add proper error handling for A0-specific failure modes
-  5. Implement A0 context cleanup after each run
-  6. Add timeout handling aligned with merged config timeoutSeconds
+Uses PromptAssembler for proper persona/playbook/context injection
+and ResponseParser for structured output extraction.
 """
 
 import base64
@@ -26,6 +14,9 @@ import httpx
 from ..config import settings
 from ..logging import logger
 from ..models import Artifact
+from ..prompt import AssembledPrompt, PromptAssembler
+from ..resolver import load_blueprint_assets
+from ..response_parser import ResponseParser
 from .base import RuntimeAdapter, RuntimeResult
 
 
@@ -34,6 +25,8 @@ class AgentZeroAdapter(RuntimeAdapter):
 
     def __init__(self, http_client: httpx.AsyncClient):
         self._client = http_client
+        self._assembler = PromptAssembler()
+        self._parser = ResponseParser()
 
     @property
     def name(self) -> str:
@@ -68,8 +61,29 @@ class AgentZeroAdapter(RuntimeAdapter):
                 ),
             )
 
-        # TODO: Assemble prompt from persona + playbook + client context + input
-        prompt = f"[task_kind: {task_kind}]\n\n{input_message}"
+        # Load blueprint assets and assemble prompt
+        blueprint_id = blueprint.get("id", "unknown")
+        assets = load_blueprint_assets(blueprint_id)
+
+        assembled = self._assembler.assemble(
+            task_kind=task_kind,
+            input_message=input_message,
+            input_data=input_data,
+            blueprint=blueprint,
+            persona=assets["persona"],
+            playbook=assets["playbook"],
+            policies=assets["policies"],
+            output_schema=assets["output_schema"],
+            client_context=client_context,
+            merged_config=merged_config,
+        )
+
+        # Combine system + user prompt for Agent Zero's single-message API
+        full_prompt = (
+            f"{assembled.system_prompt}\n\n"
+            f"---\n\n"
+            f"{assembled.user_prompt}"
+        )
 
         try:
             resp = await self._client.post(
@@ -79,7 +93,7 @@ class AgentZeroAdapter(RuntimeAdapter):
                     "X-API-KEY": token,
                 },
                 json={
-                    "message": prompt,
+                    "message": full_prompt,
                     "lifetime_hours": 24,
                 },
                 timeout=float(merged_config.get("timeoutSeconds", 120)),
@@ -96,16 +110,15 @@ class AgentZeroAdapter(RuntimeAdapter):
                 a0_response[:200] if a0_response else "",
             )
 
-            # TODO: Parse a0_response into structured Classification + Artifacts
-            # For now, return the raw response as a single artifact
+            # Parse response into structured data
+            parse_result = self._parser.parse(
+                a0_response,
+                output_schema=assets["output_schema"],
+            )
+
             return RuntimeResult(
-                artifacts=[
-                    Artifact(
-                        type="raw_agentzero_response",
-                        content=a0_response,
-                        approvalStatus="pending",
-                    )
-                ],
+                classification=parse_result.classification,
+                artifacts=parse_result.artifacts,
                 tokens_used=0,  # TODO: extract from A0 response if available
                 model_used=merged_config.get("model", "unknown"),
             )

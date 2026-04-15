@@ -1,7 +1,7 @@
 {
-  "name": "@habilis/orchestration-contracts",
+  "name": "@habilis/shared-types",
   "version": "0.1.0",
-  "description": "Shared type definitions for the worker execution pipeline",
+  "description": "Cross-service type definitions for the Habilis platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],

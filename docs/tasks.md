@@ -1,7 +1,7 @@
 # Habilis — Task Tracker
 
 > Living document. Update after every work session.
-> Last updated: 2026-04-05
+> Last updated: 2026-04-14
 
 ---
 
@@ -48,7 +48,7 @@
 ### Environment & Config
 - [x] `.env.example` with all vars grouped by service
 - [x] `make setup` generates random secrets
-- [x] Postgres init creates `paperclip`, `litellm`, `dashboard` databases
+- [x] Postgres init creates `paperclip`, `litellm`, `dashboard`, `gateway` databases
 - [x] `.gitignore` covers Python, Node, Next.js, editor files
 
 ### Documentation
@@ -93,6 +93,52 @@
 - [x] Document what is real vs stubbed
 - [x] Gateway modularized into `gateway/` package (config, models, resolver, adapters)
 
+### Monorepo Tooling (pnpm + Turborepo)
+- [x] Root `package.json` with turbo scripts
+- [x] `pnpm-workspace.yaml` workspace config
+- [x] `turbo.json` build/typecheck/lint/test pipeline
+- [x] `.npmrc` strict peer deps
+- [x] All 4 TS packages build successfully
+
+### TypeScript Package Scaffolding
+- [x] `@habilis/shared-types` — Company, WorkerInstance, common enums
+- [x] `@habilis/worker-definitions` — WorkerBlueprint, AgentDefinition, policies
+- [x] `@habilis/config` — shared env schema (zod), constants
+- [x] `@habilis/orchestration-contracts` — updated with build/tsconfig
+
+### Worker Gateway: Prompt Assembly
+- [x] `PromptAssembler` — assembles system + user prompts from persona, playbook, policies, context
+- [x] `ResponseParser` — extracts JSON from A0 responses with code block / raw JSON / fallback strategies
+- [x] Blueprint asset loaders in resolver (`load_persona`, `load_playbook`, `load_policies`, `load_output_schema`, `load_blueprint_assets`)
+- [x] Agent Zero adapter updated to use PromptAssembler + ResponseParser
+
+### Paperclip API Client
+- [x] Typed `PaperclipClient` with health, companies, tasks, callbacks
+- [x] Pydantic models for Paperclip entities and payloads
+- [x] Auth helper — JWT header generation + wake auth validation
+- [x] Wired into app lifecycle and wake endpoint
+- [x] Config additions: `paperclip_jwt_secret`, `paperclip_validate_wake_auth`
+
+### Hybrid Config Store
+- [x] `ConfigStore` abstract base class
+- [x] `FileConfigStore` — extracts existing disk-based logic
+- [x] `DbConfigStore` — Postgres-backed via asyncpg
+- [x] `resolver.resolve_all()` refactored to async, accepts ConfigStore
+- [x] Config store selection via `CONFIG_STORE` env var (default: `file`)
+
+### Database Schema
+- [x] Alembic migration infrastructure
+- [x] Migration 001: `companies`, `worker_instances`, `run_history` tables
+- [x] Migration 002: seed psilodigital company + inbox-worker instance
+- [x] `gateway` database added to Postgres init
+- [x] `DATABASE_URL` + `CONFIG_STORE` added to docker-compose
+- [x] `RunStore` for non-blocking audit trail
+
+### Gateway Unit Tests
+- [x] pytest infrastructure with pytest-asyncio, respx
+- [x] 50 tests across 6 test files — all passing
+- [x] `make test-gateway` and `make test-types` targets
+
 ---
 
 ## In Progress
@@ -105,11 +151,9 @@ _Nothing currently in progress._
 
 ### 1. Real Agent Zero Integration
 - [ ] Confirm A0 `/api_message` supports project scoping
-- [ ] Implement persona/playbook prompt assembly in A0 adapter
-- [ ] Parse A0 free-text response into structured Classification + Artifacts
+- [ ] Test full flow with prompt assembly: gateway → A0 → LiteLLM → structured response
 - [ ] Add A0 context cleanup after each run
 - [ ] Switch default adapter from `stub` to `agentzero` via env var
-- [ ] Test full flow: gateway → A0 → LiteLLM → structured response
 
 ### 2. Real Model Path
 - [ ] Add one provider API key
@@ -121,20 +165,15 @@ _Nothing currently in progress._
 - [ ] Configure HTTP adapter to gateway
 - [ ] Test Paperclip-originated wake → gateway → runtime → callback
 
-### 4. Multi-Tenancy Foundation (Config-First)
-- [ ] One Agent Zero project per company
-- [ ] Per-client overrides and limits
-- [ ] Defer DB-backed tenant model until after thin slice works
-
-### 5. Dashboard App (Next.js)
-- [ ] Scaffold dashboard
+### 4. Dashboard App (Next.js)
+- [ ] Scaffold dashboard with auth/DB layer
 - [ ] Workspace overview
 - [ ] Worker status view
 - [ ] Thin-slice run/test UI
 
-### 6. Connector Layer
+### 5. Connector Layer
 - [ ] Connector SDK structure
-- [ ] First connector strategy
+- [ ] First connector strategy (Gmail)
 - [ ] Workspace-scoped permissions
 - [ ] MCP integration direction
 
@@ -142,11 +181,9 @@ _Nothing currently in progress._
 
 ## Backlog — Future
 
-- [ ] Shared types package (`packages/shared-types/`)
 - [ ] Shared UI component library (`packages/ui/`)
-- [ ] Shared config package (`packages/config/`)
+- [ ] Connector SDK (`packages/connector-sdk/`)
 - [ ] Worker memory/context persistence
-- [ ] Audit trail / activity log
 - [ ] Rate limiting and budget enforcement
 - [ ] Coolify deployment (first real deploy to Hetzner)
 - [ ] Custom domain setup
@@ -161,13 +198,12 @@ _Nothing currently in progress._
 
 | Area | Gap | Impact |
 |---|---|---|
-| Runtime adapter | Stub adapter returns deterministic results, no real AI | Expected for v1; switch to A0 adapter next |
-| A0 structured output | A0 returns free text, not structured JSON | Need parsing layer in A0 adapter |
+| Runtime adapter | Stub adapter returns deterministic results, no real AI | Switch to A0 adapter when ready |
 | A0 project scoping | Not confirmed if A0 supports per-client projects | Required for multi-tenancy |
 | Paperclip callback | URL `/api/runs/{runId}/complete` is a guess | Callback may fail in real integration |
-| Paperclip auth | No auth header validation on wake endpoint | Any caller can trigger wakes |
 | Agent Zero token | Must be manually copied from UI after first boot | Cannot fully automate setup |
 | Provider keys | None set — model calls will fail | Expected for now; add before testing |
 | Dashboard | Empty placeholder only | No product surface yet |
-| Config source | YAML files on disk, not DB | Fine for v1; migrate later |
+| DB config store | Implemented but untested with running Postgres | Test when stack is up |
+| Run history | RunStore implemented but not wired into /v1/workers/run response path | Wire in when DB is confirmed |
 | HTTPS | Not in local dev | Coolify/Caddy handles in production |

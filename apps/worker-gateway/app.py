@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Header, Request
 from gateway.config import settings
 from gateway.logging import logger
 from gateway.models import (
@@ -38,6 +38,9 @@ from gateway.models import (
 from gateway.resolver import ResolutionError, resolve_all
 from gateway.adapters.stub import StubRuntimeAdapter
 from gateway.adapters.agentzero import AgentZeroAdapter
+from gateway.paperclip import PaperclipClient
+from gateway.paperclip.auth import validate_wake_auth
+from gateway.paperclip.models import RunCallbackPayload
 
 # ---------------------------------------------------------------------------
 # HTTP client + adapter lifecycle
@@ -45,11 +48,13 @@ from gateway.adapters.agentzero import AgentZeroAdapter
 
 http_client: Optional[httpx.AsyncClient] = None
 runtime_adapter = None
+paperclip_client: Optional[PaperclipClient] = None
+config_store = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client, runtime_adapter
+    global http_client, runtime_adapter, paperclip_client, config_store
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
     # Select runtime adapter via RUNTIME_ADAPTER env var.
@@ -65,12 +70,29 @@ async def lifespan(app: FastAPI):
                 "Unknown RUNTIME_ADAPTER '%s', falling back to 'stub'", adapter_name
             )
 
+    # Initialize Paperclip client
+    paperclip_client = PaperclipClient(http_client)
+
+    # Initialize config store
+    if settings.config_store == "db" and settings.database_url:
+        from gateway.store.db_store import DbConfigStore
+        config_store = DbConfigStore(settings.database_url)
+        await config_store.connect()
+        logger.info("Config store: db (Postgres-backed)")
+    else:
+        from gateway.store.file_store import FileConfigStore
+        config_store = FileConfigStore()
+        logger.info("Config store: file (YAML on disk)")
+
     logger.info(
-        "Worker gateway v1.0.0 started — adapter=%s, repo_root=%s",
+        "Worker gateway v1.0.0 started — adapter=%s, store=%s, repo_root=%s",
         runtime_adapter.name,
+        config_store.name,
         settings.repo_root,
     )
     yield
+    if hasattr(config_store, "close"):
+        await config_store.close()
     await http_client.aclose()
     logger.info("Worker gateway stopped")
 
@@ -114,6 +136,7 @@ async def health() -> Dict[str, Any]:
     await asyncio.gather(
         _check("agentzero", f"{settings.agentzero_base_url}/"),
         _check("litellm", f"{settings.litellm_base_url}/health"),
+        _check("paperclip", f"{settings.paperclip_base_url}/api/health"),
     )
 
     if any(v == "unreachable" for v in result["downstream"].values()):
@@ -181,12 +204,13 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
 
     # --- Step 1: Resolve ---
     try:
-        blueprint, company, instance, merged_config, company_context = resolve_all(
+        blueprint, company, instance, merged_config, company_context = await resolve_all(
             company_id=req.companyId,
             worker_instance_id=req.workerInstanceId,
             blueprint_id=req.blueprintId,
             blueprint_version=req.blueprintVersion,
             run_overrides=req.runOverrides.model_dump(exclude_none=True) if req.runOverrides else None,
+            store=config_store,
         )
     except ResolutionError as exc:
         logger.error("Resolution failed: [%s] %s", exc.code, exc.message)
@@ -349,8 +373,17 @@ async def paperclip_wake(
     payload: PaperclipWakePayload,
     request: Request,
     background_tasks: BackgroundTasks,
+    authorization: Optional[str] = Header(None),
 ) -> WakeResponse:
     """Accept a Paperclip wake event and process it asynchronously."""
+    # Validate auth if enabled
+    if not validate_wake_auth(authorization):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Unauthorized", "message": "Invalid or missing authorization"},
+        )
+
     logger.info(
         "Wake received: runId=%s agentId=%s companyId=%s",
         payload.runId,
@@ -369,6 +402,7 @@ async def _process_wake(payload: Dict[str, Any]) -> None:
     """Forward the wake payload to Agent Zero and call back to Paperclip."""
     run_id = payload.get("runId", "unknown")
     agent_id = payload.get("agentId", "unknown")
+    callback_url = payload.get("callbackUrl")
     logger.info("Processing wake run %s for agent %s", run_id, agent_id)
 
     a0_token = _get_a0_api_token()
@@ -408,13 +442,17 @@ async def _process_wake(payload: Dict[str, Any]) -> None:
         except Exception as exc:
             logger.warning("Failed to terminate A0 context %s: %s", context_id, exc)
 
-    callback_url = f"{settings.paperclip_base_url}/api/runs/{run_id}/complete"
+    # Callback to Paperclip using typed client
+    target_url = callback_url or f"{settings.paperclip_base_url}/api/runs/{run_id}/complete"
     try:
-        await http_client.post(
-            callback_url,
-            json={"status": status, "output": a0_response, "error": error_detail, "agentId": agent_id},
-            timeout=30.0,
+        cb_payload = RunCallbackPayload(
+            runId=run_id,
+            status=status,
+            output={"response": a0_response} if a0_response else None,
+            error={"message": error_detail} if error_detail else None,
+            metadata={"agentId": agent_id},
         )
+        await paperclip_client.complete_run(target_url, cb_payload)
     except Exception as exc:
         logger.error("Paperclip callback failed for run %s: %s", run_id, exc)
 

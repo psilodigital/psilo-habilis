@@ -1,7 +1,7 @@
 {
-  "name": "@habilis/orchestration-contracts",
+  "name": "@habilis/worker-definitions",
   "version": "0.1.0",
-  "description": "Shared type definitions for the worker execution pipeline",
+  "description": "Worker pack type definitions — blueprints, agents, policies",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
@@ -11,6 +11,9 @@
   },
   "license": "UNLICENSED",
   "private": true,
+  "dependencies": {
+    "@habilis/shared-types": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.7.0"
   }

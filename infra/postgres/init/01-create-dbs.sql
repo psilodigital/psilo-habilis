@@ -1,3 +1,4 @@
 CREATE DATABASE paperclip;
 CREATE DATABASE litellm;
 CREATE DATABASE dashboard;
+CREATE DATABASE gateway;

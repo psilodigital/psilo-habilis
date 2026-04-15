@@ -106,3 +106,68 @@
 **Rationale:** Paperclip is a control plane, not a customer product. The dashboard is the product surface — it must be fully custom, brand-controlled, and designed for non-technical business users. Keeping it separate means Paperclip can be upgraded or replaced without rewriting the product.
 
 **Consequences:** Dashboard needs its own DB schema, auth, and API layer. Communicates with Paperclip via API, not by sharing internals.
+
+---
+
+## ADR-009: pnpm + Turborepo for Monorepo Tooling
+
+**Date:** 2026-04-14
+**Status:** Accepted
+
+**Decision:** Use pnpm workspaces with Turborepo for TypeScript package management and build orchestration. Python services (worker-gateway) live in the same monorepo but are managed independently.
+
+**Rationale:** pnpm provides strict dependency isolation and fast installs. Turborepo adds cached builds and dependency-aware task execution across packages. The combination is lightweight yet powerful for a growing monorepo with shared TS packages.
+
+**Consequences:** All TS packages must have `build` and `typecheck` scripts. Python services are unaffected by pnpm/Turbo. Root `package.json` exists for workspace management only.
+
+---
+
+## ADR-010: Prompt Assembly Module in Worker Gateway
+
+**Date:** 2026-04-14
+**Status:** Accepted
+
+**Decision:** Create an adapter-agnostic `PromptAssembler` that constructs system + user prompts from blueprint assets (persona, playbook, policies, output schema) and client context. Paired with a `ResponseParser` for extracting structured data from free-text runtime responses.
+
+**Rationale:** The Agent Zero adapter was sending flat prompt strings with no persona, playbook, or context injection. Proper prompt assembly is required for workers to behave according to their blueprint definitions. Making the assembler adapter-agnostic means any future runtime (not just Agent Zero) can use the same prompt construction.
+
+**Consequences:** Blueprint asset loaders added to resolver. A0 adapter now depends on PromptAssembler. Response parsing uses a fallback chain: JSON code block → raw JSON → plain text artifact.
+
+---
+
+## ADR-011: Hybrid Config Store (YAML Blueprints + DB Tenants)
+
+**Date:** 2026-04-14
+**Status:** Accepted
+
+**Decision:** Worker blueprints remain as YAML files on disk (versioned product definitions). Company and worker instance configs are abstracted behind a `ConfigStore` interface with two implementations: `FileConfigStore` (YAML on disk, default) and `DbConfigStore` (Postgres).
+
+**Rationale:** Blueprints are developer-authored product definitions that benefit from version control. Company/instance configs are tenant data that will eventually be managed via the dashboard UI, requiring DB storage. The abstraction allows gradual migration without breaking existing functionality.
+
+**Consequences:** `resolve_all()` is now async. `CONFIG_STORE=file` remains default. DB store requires `DATABASE_URL` and running Postgres with the gateway schema.
+
+---
+
+## ADR-012: Alembic for Gateway Database Migrations
+
+**Date:** 2026-04-14
+**Status:** Accepted
+
+**Decision:** Use Alembic with SQLAlchemy for managing the gateway's Postgres schema migrations.
+
+**Rationale:** Alembic is the standard migration tool for Python + Postgres. It provides versioned, reversible migrations and integrates with the existing Python toolchain. The gateway needs its own DB for company/instance configs and run history.
+
+**Consequences:** Migration files live in `apps/worker-gateway/alembic/versions/`. `DATABASE_URL` env var configures the connection. Migrations must be run before using `CONFIG_STORE=db`.
+
+---
+
+## ADR-013: Separate Gateway Database
+
+**Date:** 2026-04-14
+**Status:** Accepted
+
+**Decision:** The worker-gateway gets its own `gateway` database in the shared Postgres instance, separate from `paperclip`, `litellm`, and `dashboard` databases.
+
+**Rationale:** Each service owns its data. The gateway stores company configs, worker instance configs, and run history — data that belongs to the orchestration boundary, not to Paperclip or LiteLLM. Separate databases enforce clean service boundaries.
+
+**Consequences:** `infra/postgres/init/01-create-dbs.sql` creates the `gateway` database. Docker Compose passes `DATABASE_URL` to the worker-gateway service.

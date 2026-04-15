@@ -1,4 +1,4 @@
-.PHONY: help setup validate up build down clean logs status restart test
+.PHONY: help setup validate up build down clean logs status restart test test-gateway test-types
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -32,6 +32,12 @@ restart: ## Restart all services
 
 test: ## Run smoke tests against running stack
 	@bash infra/scripts/smoke-test.sh
+
+test-gateway: ## Run worker-gateway unit tests
+	cd apps/worker-gateway && python -m pytest tests/ -v --tb=short
+
+test-types: ## Typecheck all TS packages
+	pnpm turbo run typecheck
 
 # --- v1 thin-slice shortcuts ---
 

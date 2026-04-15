@@ -42,6 +42,14 @@ class Settings(BaseSettings):
 
     # Paperclip
     paperclip_base_url: str = "http://paperclip:3100"
+    paperclip_jwt_secret: str = ""
+    paperclip_validate_wake_auth: bool = False
+
+    # Config store: "file" (YAML on disk) or "db" (Postgres)
+    config_store: str = "file"
+
+    # Database (used when config_store=db or for run history)
+    database_url: str = ""
 
     model_config = {"env_file": ".env", "case_sensitive": False}
 

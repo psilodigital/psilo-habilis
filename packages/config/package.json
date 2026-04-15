@@ -1,7 +1,7 @@
 {
-  "name": "@habilis/orchestration-contracts",
+  "name": "@habilis/config",
   "version": "0.1.0",
-  "description": "Shared type definitions for the worker execution pipeline",
+  "description": "Shared configuration utilities for the Habilis platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
@@ -11,6 +11,9 @@
   },
   "license": "UNLICENSED",
   "private": true,
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
   "devDependencies": {
     "typescript": "^5.7.0"
   }

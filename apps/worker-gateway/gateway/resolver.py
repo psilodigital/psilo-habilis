@@ -10,13 +10,17 @@ Merge precedence (later wins):
   3. Per-request overrides — from the API request body → runOverrides
 """
 
+import json
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import yaml
 
 from .config import settings
 from .logging import logger
+
+if TYPE_CHECKING:
+    from .store.base import ConfigStore
 
 
 class ResolutionError(Exception):
@@ -139,6 +143,111 @@ def load_company_context(company_id: str) -> Dict[str, str]:
     return context
 
 
+# ---------------------------------------------------------------------------
+# Blueprint asset loaders
+# ---------------------------------------------------------------------------
+
+
+def load_persona(blueprint_id: str) -> str:
+    """Load the persona markdown for a blueprint."""
+    persona_file = Path(settings.repo_root) / "worker-packs" / blueprint_id / "persona.md"
+    if not persona_file.exists():
+        logger.warning("No persona file for blueprint '%s'", blueprint_id)
+        return ""
+    content = persona_file.read_text(encoding="utf-8")
+    logger.info("Loaded persona for blueprint '%s' (%d chars)", blueprint_id, len(content))
+    return content
+
+
+def load_playbook(blueprint_id: str) -> str:
+    """Load the playbook markdown for a blueprint."""
+    playbook_file = Path(settings.repo_root) / "worker-packs" / blueprint_id / "playbook.md"
+    if not playbook_file.exists():
+        logger.warning("No playbook file for blueprint '%s'", blueprint_id)
+        return ""
+    content = playbook_file.read_text(encoding="utf-8")
+    logger.info("Loaded playbook for blueprint '%s' (%d chars)", blueprint_id, len(content))
+    return content
+
+
+def load_policies(blueprint_id: str) -> Dict[str, Dict[str, Any]]:
+    """Load all policy YAML files for a blueprint."""
+    policies_dir = Path(settings.repo_root) / "worker-packs" / blueprint_id / "policies"
+    policies: Dict[str, Dict[str, Any]] = {}
+
+    if not policies_dir.exists():
+        logger.warning("No policies directory for blueprint '%s'", blueprint_id)
+        return policies
+
+    for yaml_file in sorted(policies_dir.glob("*.yaml")):
+        # e.g. "approval-policy.yaml" → key "approval"
+        key = yaml_file.stem.replace("-policy", "")
+        policies[key] = _load_yaml(yaml_file)
+
+    logger.info(
+        "Loaded %d policies for blueprint '%s': %s",
+        len(policies),
+        blueprint_id,
+        list(policies.keys()),
+    )
+    return policies
+
+
+def load_output_schema(blueprint_id: str) -> Optional[Dict[str, Any]]:
+    """Load the run-result JSON schema for a blueprint."""
+    # Check both possible locations: outputs/ and root
+    for subpath in ("outputs/run-result.schema.json", "run-result.schema.json"):
+        schema_file = Path(settings.repo_root) / "worker-packs" / blueprint_id / subpath
+        if schema_file.exists():
+            content = schema_file.read_text(encoding="utf-8")
+            schema = json.loads(content)
+            logger.info("Loaded output schema for blueprint '%s'", blueprint_id)
+            return schema
+
+    logger.warning("No output schema for blueprint '%s'", blueprint_id)
+    return None
+
+
+def load_agent_configs(blueprint_id: str) -> Dict[str, Dict[str, Any]]:
+    """Load all agent YAML configs for a blueprint."""
+    agents_dir = Path(settings.repo_root) / "worker-packs" / blueprint_id / "agents"
+    agents: Dict[str, Dict[str, Any]] = {}
+
+    if not agents_dir.exists():
+        return agents
+
+    for yaml_file in sorted(agents_dir.glob("*.yaml")):
+        agents[yaml_file.stem] = _load_yaml(yaml_file)
+
+    logger.info(
+        "Loaded %d agent configs for blueprint '%s': %s",
+        len(agents),
+        blueprint_id,
+        list(agents.keys()),
+    )
+    return agents
+
+
+def load_blueprint_assets(blueprint_id: str) -> Dict[str, Any]:
+    """
+    Load all assets for a blueprint at once.
+
+    Returns a dict with keys: persona, playbook, policies, output_schema, agents
+    """
+    return {
+        "persona": load_persona(blueprint_id),
+        "playbook": load_playbook(blueprint_id),
+        "policies": load_policies(blueprint_id),
+        "output_schema": load_output_schema(blueprint_id),
+        "agents": load_agent_configs(blueprint_id),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Config merging
+# ---------------------------------------------------------------------------
+
+
 def merge_config(
     blueprint: Dict[str, Any],
     instance: Dict[str, Any],
@@ -180,21 +289,46 @@ def merge_config(
     return merged
 
 
-def resolve_all(
+async def resolve_all(
     company_id: str,
     worker_instance_id: str,
     blueprint_id: str,
     blueprint_version: str,
     run_overrides: Optional[Dict[str, Any]] = None,
+    store: Optional["ConfigStore"] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, str]]:
     """
     Full resolution pipeline. Returns:
       (blueprint, company, instance, merged_config, company_context)
+
+    Blueprint is always resolved from YAML on disk.
+    Company/instance resolution is delegated to the ConfigStore if provided,
+    otherwise falls back to the legacy file-based functions.
     """
+    # Blueprint always from disk (versioned product definition)
     blueprint = resolve_blueprint(blueprint_id, blueprint_version)
-    company = resolve_company(company_id)
-    instance = resolve_worker_instance(company_id, worker_instance_id)
-    company_context = load_company_context(company_id)
+
+    if store:
+        # Delegate company/instance to the config store
+        try:
+            company = await store.get_company(company_id)
+        except KeyError as exc:
+            raise ResolutionError(code="COMPANY_NOT_FOUND", message=str(exc)) from exc
+
+        try:
+            instance = await store.get_worker_instance(company_id, worker_instance_id)
+        except KeyError as exc:
+            raise ResolutionError(code="INSTANCE_NOT_FOUND", message=str(exc)) from exc
+        except ValueError as exc:
+            raise ResolutionError(code="INSTANCE_DISABLED", message=str(exc)) from exc
+
+        company_context = await store.get_company_context(company_id)
+    else:
+        # Legacy: direct file-based resolution
+        company = resolve_company(company_id)
+        instance = resolve_worker_instance(company_id, worker_instance_id)
+        company_context = load_company_context(company_id)
+
     merged_config = merge_config(blueprint, instance, run_overrides)
 
     return blueprint, company, instance, merged_config, company_context
