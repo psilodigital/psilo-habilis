@@ -117,9 +117,18 @@ services:
       # A0_SET_* only seeds defaults until settings.json exists.
       A0_SET_agent_profile: ${A0_SET_agent_profile:-custom}
       A0_SET_agent_memory_subdir: ${A0_SET_agent_memory_subdir:-production}
-      # Configure your actual model/provider in the Agent Zero UI.
-      # For OpenAI-compatible gateways, Agent Zero docs recommend using
-      # the "OpenAI Compatible" provider and a base URL to your gateway.
+      # Route all model calls through LiteLLM (OpenAI-compatible provider).
+      # A0 resolves API keys via env vars: OPENAI_API_KEY for the "openai" provider.
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      A0_SET_chat_model_provider: openai
+      A0_SET_chat_model_name: worker-default
+      A0_SET_chat_model_api_base: http://litellm:4000
+      A0_SET_util_model_provider: openai
+      A0_SET_util_model_name: worker-default
+      A0_SET_util_model_api_base: http://litellm:4000
+      A0_SET_browser_model_provider: openai
+      A0_SET_browser_model_name: worker-default
+      A0_SET_browser_model_api_base: http://litellm:4000
     volumes:
       - agentzero_usr:/a0/usr
     ports:
@@ -155,6 +164,11 @@ services:
       PAPERCLIP_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET:-}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/gateway
       CONFIG_STORE: ${CONFIG_STORE:-file}
+      RUNTIME_ADAPTER: ${RUNTIME_ADAPTER:-agentzero}
+      REPO_ROOT: /app
+    volumes:
+      - ./worker-packs:/app/worker-packs:ro
+      - ./clients:/app/clients:ro
     depends_on:
       litellm:
         condition: service_healthy

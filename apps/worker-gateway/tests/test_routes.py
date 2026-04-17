@@ -90,6 +90,6 @@ class TestRoutes:
             "input": "Test wake",
         }
         resp = await client.post("/paperclip/wake", json=payload)
-        assert resp.status_code == 202
+        assert resp.status_code == 200
         data = resp.json()
         assert data["accepted"] is True

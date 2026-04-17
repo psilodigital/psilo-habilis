@@ -1,7 +1,7 @@
 # Habilis — Task Tracker
 
 > Living document. Update after every work session.
-> Last updated: 2026-04-14
+> Last updated: 2026-04-17
 
 ---
 
@@ -139,6 +139,34 @@
 - [x] 50 tests across 6 test files — all passing
 - [x] `make test-gateway` and `make test-types` targets
 
+### Real Agent Zero Integration (Task 1)
+- [x] Reverse-engineered A0 API token: `sha256(runtime_id:login:password)[:16]` (base64url)
+- [x] Confirmed `/api_message` contract: `{message, context_id?, lifetime_hours}` → `{response, context_id}`
+- [x] Do NOT send `context_id` on first message (A0 creates new context, returns its ID)
+- [x] Added `_terminate_context()` — cleanup via `/api_terminate_chat` after each run
+- [x] Switched Docker default adapter to `agentzero` via `RUNTIME_ADAPTER` env var
+- [x] Integration tests (`test_agentzero_integration.py`) with `@pytest.mark.integration`
+- [x] Full flow verified: gateway → A0 → LiteLLM → OpenAI → structured response (10s)
+
+### Real Model Path (Task 2)
+- [x] OpenAI API key added to `.env`
+- [x] A0 configured to use LiteLLM via `A0_SET_*` env vars (chat, util, browser models)
+- [x] A0 `OPENAI_API_KEY` set to `LITELLM_MASTER_KEY` for LiteLLM auth
+- [x] LiteLLM proxies `worker-default` → `openai/gpt-4o-mini` — confirmed working
+- [x] Full pipeline: `/v1/workers/run` returns real AI-generated classification + draft
+
+### Paperclip Integration (Task 3)
+- [x] Explored Paperclip API: Better Auth (cookie), agent API keys (SHA256-hashed), HTTP adapter
+- [x] Created company "Psilodigital" + agent "Inbox Worker" with HTTP adapter
+- [x] Agent API key created and configured for gateway auth
+- [x] HTTP adapter URL: `http://worker-gateway:8080/paperclip/wake`
+- [x] Discovered Paperclip HTTP adapter is fire-and-forget (no callback needed)
+- [x] Refactored `/paperclip/wake` from async background task to synchronous adapter pipeline
+- [x] Made `companyId` optional in `PaperclipWakePayload` (Paperclip doesn't send it)
+- [x] Cleaned up unused imports (`base64`, `BackgroundTasks`, `RunCallbackPayload`, `Artifact`)
+- [x] Updated wake test to expect 200 (was 202)
+- [x] Full E2E verified: Paperclip heartbeat → wake → A0 → LiteLLM → OpenAI → 200 OK
+
 ---
 
 ## In Progress
@@ -148,22 +176,6 @@ _Nothing currently in progress._
 ---
 
 ## Next Up — Priority Order
-
-### 1. Real Agent Zero Integration
-- [ ] Confirm A0 `/api_message` supports project scoping
-- [ ] Test full flow with prompt assembly: gateway → A0 → LiteLLM → structured response
-- [ ] Add A0 context cleanup after each run
-- [ ] Switch default adapter from `stub` to `agentzero` via env var
-
-### 2. Real Model Path
-- [ ] Add one provider API key
-- [ ] Verify LiteLLM can make real model calls
-- [ ] Verify worker-gateway → Agent Zero → LiteLLM flow
-
-### 3. Paperclip Integration
-- [ ] Confirm Paperclip wake/callback contract
-- [ ] Configure HTTP adapter to gateway
-- [ ] Test Paperclip-originated wake → gateway → runtime → callback
 
 ### 4. Dashboard App (Next.js)
 - [ ] Scaffold dashboard with auth/DB layer
@@ -198,12 +210,14 @@ _Nothing currently in progress._
 
 | Area | Gap | Impact |
 |---|---|---|
-| Runtime adapter | Stub adapter returns deterministic results, no real AI | Switch to A0 adapter when ready |
-| A0 project scoping | Not confirmed if A0 supports per-client projects | Required for multi-tenancy |
-| Paperclip callback | URL `/api/runs/{runId}/complete` is a guess | Callback may fail in real integration |
-| Agent Zero token | Must be manually copied from UI after first boot | Cannot fully automate setup |
-| Provider keys | None set — model calls will fail | Expected for now; add before testing |
+| ~~Runtime adapter~~ | ~~Stub adapter returns deterministic results~~ | **Resolved** — A0 adapter is default in Docker |
+| ~~A0 project scoping~~ | ~~Not confirmed if A0 supports per-client projects~~ | **Resolved** — A0 creates isolated contexts per run |
+| ~~Paperclip callback~~ | ~~URL `/api/runs/{runId}/complete` is a guess~~ | **Resolved** — HTTP adapter is fire-and-forget, no callback |
+| ~~Agent Zero token~~ | ~~Must be manually copied from UI~~ | **Resolved** — Token derived from `sha256(runtime_id:login:password)[:16]` |
+| ~~Provider keys~~ | ~~None set — model calls will fail~~ | **Resolved** — OpenAI key configured, LiteLLM proxying |
+| Blueprint assets for wake | `/paperclip/wake` uses agent ID as blueprint ID — no matching worker-pack | Create mapping from Paperclip agent → worker-pack blueprint |
 | Dashboard | Empty placeholder only | No product surface yet |
 | DB config store | Implemented but untested with running Postgres | Test when stack is up |
 | Run history | RunStore implemented but not wired into /v1/workers/run response path | Wire in when DB is confirmed |
 | HTTPS | Not in local dev | Coolify/Caddy handles in production |
+| Paperclip health check | Gateway reports Paperclip as "ok" even on 403 (auth required) | Needs API key for health endpoint |

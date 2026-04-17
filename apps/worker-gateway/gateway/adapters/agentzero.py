@@ -7,7 +7,7 @@ and ResponseParser for structured output extraction.
 """
 
 import base64
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -40,6 +40,19 @@ class AgentZeroAdapter(RuntimeAdapter):
             creds = f"{settings.agentzero_auth_login}:{settings.agentzero_auth_password}"
             return base64.b64encode(creds.encode()).decode()
         return ""
+
+    async def _terminate_context(self, context_id: str, token: str) -> None:
+        """Clean up Agent Zero chat context after run completion."""
+        try:
+            await self._client.post(
+                f"{settings.agentzero_base_url}/api_terminate_chat",
+                headers={"Content-Type": "application/json", "X-API-KEY": token},
+                json={"context_id": context_id},
+                timeout=10.0,
+            )
+            logger.info("Terminated A0 context: %s", context_id)
+        except Exception as exc:
+            logger.warning("Failed to terminate A0 context %s: %s", context_id, exc)
 
     async def execute(
         self,
@@ -85,6 +98,16 @@ class AgentZeroAdapter(RuntimeAdapter):
             f"{assembled.user_prompt}"
         )
 
+        context_id: Optional[str] = None
+
+        # Build A0 API payload (field names confirmed from A0 source).
+        # Do NOT send context_id on the first message — A0 creates a new
+        # context and returns its id. Sending a non-existent id causes 404.
+        a0_payload: Dict[str, Any] = {
+            "message": full_prompt,
+            "lifetime_hours": 1,
+        }
+
         try:
             resp = await self._client.post(
                 f"{settings.agentzero_base_url}/api_message",
@@ -92,10 +115,7 @@ class AgentZeroAdapter(RuntimeAdapter):
                     "Content-Type": "application/json",
                     "X-API-KEY": token,
                 },
-                json={
-                    "message": full_prompt,
-                    "lifetime_hours": 24,
-                },
+                json=a0_payload,
                 timeout=float(merged_config.get("timeoutSeconds", 120)),
             )
             resp.raise_for_status()
@@ -139,3 +159,7 @@ class AgentZeroAdapter(RuntimeAdapter):
                 error_code="AGENTZERO_UNREACHABLE",
                 error_message=f"Agent Zero unreachable: {exc}",
             )
+        finally:
+            # Clean up A0 context after each run
+            if context_id and token:
+                await self._terminate_context(context_id, token)

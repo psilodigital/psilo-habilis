@@ -8,22 +8,20 @@ Routes:
   GET  /health     — health check
   GET  /info       — service metadata
   POST /v1/workers/run — execute a worker task (blueprint-driven)
-  POST /paperclip/wake — legacy Paperclip wake endpoint (preserved)
+  POST /paperclip/wake — Paperclip HTTP adapter endpoint
 """
 
 import asyncio
-import base64
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, Header, Request
+from fastapi import FastAPI, Header, Request
 from gateway.config import settings
 from gateway.logging import logger
 from gateway.models import (
-    Artifact,
     PaperclipWakePayload,
     WakeResponse,
     WorkerRunRequest,
@@ -40,7 +38,7 @@ from gateway.adapters.stub import StubRuntimeAdapter
 from gateway.adapters.agentzero import AgentZeroAdapter
 from gateway.paperclip import PaperclipClient
 from gateway.paperclip.auth import validate_wake_auth
-from gateway.paperclip.models import RunCallbackPayload
+
 
 # ---------------------------------------------------------------------------
 # HTTP client + adapter lifecycle
@@ -243,6 +241,7 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
         )
 
     # --- Step 2: Execute via runtime adapter ---
+    merged_config["_run_id"] = run_id
     result = await runtime_adapter.execute(
         task_kind=req.taskKind,
         input_message=req.input.message,
@@ -365,18 +364,21 @@ def _error_response(
 
 
 # ---------------------------------------------------------------------------
-# POST /paperclip/wake — legacy endpoint (preserved)
+# POST /paperclip/wake — Paperclip HTTP adapter endpoint
 # ---------------------------------------------------------------------------
 
-@app.post("/paperclip/wake", response_model=WakeResponse, status_code=202)
+@app.post("/paperclip/wake", response_model=WakeResponse)
 async def paperclip_wake(
     payload: PaperclipWakePayload,
     request: Request,
-    background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(None),
 ) -> WakeResponse:
-    """Accept a Paperclip wake event and process it asynchronously."""
-    # Validate auth if enabled
+    """
+    Accept a Paperclip heartbeat wake event and execute via the runtime adapter.
+
+    Paperclip's HTTP adapter sends: { agentId, runId, context }.
+    It expects a 2xx response — no callback needed.
+    """
     if not validate_wake_auth(authorization):
         from fastapi.responses import JSONResponse
         return JSONResponse(
@@ -385,82 +387,45 @@ async def paperclip_wake(
         )
 
     logger.info(
-        "Wake received: runId=%s agentId=%s companyId=%s",
+        "Wake received: runId=%s agentId=%s",
         payload.runId,
         payload.agentId,
-        payload.companyId,
     )
-    background_tasks.add_task(_process_wake, payload.model_dump())
+
+    # Extract task input from the payload
+    task_input = payload.input or f"Execute task for run {payload.runId}"
+    wake_context = payload.context or {}
+
+    # Execute via the runtime adapter (same pipeline as /v1/workers/run)
+    merged_config = {
+        "model": "worker-default",
+        "maxTokens": 4096,
+        "temperature": 0.3,
+        "approvalRequired": True,
+        "timeoutSeconds": 120,
+        "_run_id": payload.runId,
+    }
+
+    result = await runtime_adapter.execute(
+        task_kind="inbound_email_triage",
+        input_message=task_input,
+        input_data=wake_context,
+        merged_config=merged_config,
+        blueprint={"id": payload.agentId, "taskKinds": ["inbound_email_triage"]},
+        client_context={},
+    )
+
+    status = "error" if result.is_error else "completed"
+
+    logger.info(
+        "Wake completed: runId=%s status=%s artifacts=%d",
+        payload.runId,
+        status,
+        len(result.artifacts),
+    )
+
     return WakeResponse(
         accepted=True,
         runId=payload.runId,
-        message="Wake accepted, processing in background",
+        message=f"Wake {status}",
     )
-
-
-async def _process_wake(payload: Dict[str, Any]) -> None:
-    """Forward the wake payload to Agent Zero and call back to Paperclip."""
-    run_id = payload.get("runId", "unknown")
-    agent_id = payload.get("agentId", "unknown")
-    callback_url = payload.get("callbackUrl")
-    logger.info("Processing wake run %s for agent %s", run_id, agent_id)
-
-    a0_token = _get_a0_api_token()
-    a0_response: Optional[str] = None
-    context_id: Optional[str] = None
-    status = "completed"
-    error_detail: Optional[str] = None
-
-    if not a0_token:
-        logger.warning("No Agent Zero API token configured")
-        status = "error"
-        error_detail = "No Agent Zero API token configured"
-    else:
-        task_input = payload.get("input") or f"Execute task for run {run_id}"
-        try:
-            resp = await http_client.post(
-                f"{settings.agentzero_base_url}/api_message",
-                headers={"Content-Type": "application/json", "X-API-KEY": a0_token},
-                json={"message": task_input, "lifetime_hours": 24},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            a0_response = data.get("response", "")
-            context_id = data.get("context_id")
-        except Exception as exc:
-            logger.error("Agent Zero call failed for run %s: %s", run_id, exc)
-            status = "error"
-            error_detail = str(exc)
-
-    if context_id and a0_token:
-        try:
-            await http_client.post(
-                f"{settings.agentzero_base_url}/api_terminate_chat",
-                headers={"Content-Type": "application/json", "X-API-KEY": a0_token},
-                json={"context_id": context_id},
-            )
-        except Exception as exc:
-            logger.warning("Failed to terminate A0 context %s: %s", context_id, exc)
-
-    # Callback to Paperclip using typed client
-    target_url = callback_url or f"{settings.paperclip_base_url}/api/runs/{run_id}/complete"
-    try:
-        cb_payload = RunCallbackPayload(
-            runId=run_id,
-            status=status,
-            output={"response": a0_response} if a0_response else None,
-            error={"message": error_detail} if error_detail else None,
-            metadata={"agentId": agent_id},
-        )
-        await paperclip_client.complete_run(target_url, cb_payload)
-    except Exception as exc:
-        logger.error("Paperclip callback failed for run %s: %s", run_id, exc)
-
-
-def _get_a0_api_token() -> str:
-    if settings.agentzero_api_token:
-        return settings.agentzero_api_token
-    if settings.agentzero_auth_login and settings.agentzero_auth_password:
-        creds = f"{settings.agentzero_auth_login}:{settings.agentzero_auth_password}"
-        return base64.b64encode(creds.encode()).decode()
-    return ""

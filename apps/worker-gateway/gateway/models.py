@@ -126,7 +126,7 @@ class WorkerRunResponse(BaseModel):
 class PaperclipWakePayload(BaseModel):
     runId: str
     agentId: str
-    companyId: str
+    companyId: Optional[str] = None
     input: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
     callbackUrl: Optional[str] = None
