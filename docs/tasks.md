@@ -167,6 +167,25 @@
 - [x] Updated wake test to expect 200 (was 202)
 - [x] Full E2E verified: Paperclip heartbeat → wake → A0 → LiteLLM → OpenAI → 200 OK
 
+### Dashboard App — Thin Slice (Task 4)
+- [x] Next.js 16.2 scaffold with App Router + Turbopack
+- [x] pnpm workspace updated to include `apps/*`
+- [x] shadcn/ui v4 (CLI v4, Base UI, Tailwind v4) with sidebar, card, table, badge, etc.
+- [x] Drizzle ORM + Postgres — schema for Better Auth tables (user, session, account, verification)
+- [x] Better Auth — email/password, Drizzle adapter, API route handler
+- [x] `proxy.ts` auth gate — redirect to `/login` if no session cookie
+- [x] Login + Register pages with shadcn Card + Input + Button
+- [x] Dashboard layout with sidebar navigation (Workers, Run History) + user dropdown
+- [x] Worker overview page — gateway status cards + configured worker cards
+- [x] Run history page — table with status badges, duration, model, timestamps
+- [x] Gateway `GET /v1/runs` endpoint — lists runs from `run_history` table
+- [x] Gateway `RunStore` initialized in lifespan (auto-connect when `DATABASE_URL` set)
+- [x] `next.config.ts` standalone output for Docker
+- [x] Dockerfile (multi-stage: deps → build → runner) + docker-compose service
+- [x] `.env` additions: `BETTER_AUTH_SECRET`, `DASHBOARD_PORT`
+- [x] Postgres port exposed as `5433` for local dev (avoids conflict with local PG)
+- [x] Build passes, dev server works, login page renders at `http://localhost:3000`
+
 ---
 
 ## In Progress
@@ -176,12 +195,6 @@ _Nothing currently in progress._
 ---
 
 ## Next Up — Priority Order
-
-### 4. Dashboard App (Next.js)
-- [ ] Scaffold dashboard with auth/DB layer
-- [ ] Workspace overview
-- [ ] Worker status view
-- [ ] Thin-slice run/test UI
 
 ### 5. Connector Layer
 - [ ] Connector SDK structure

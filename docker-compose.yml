@@ -188,26 +188,31 @@ services:
     networks:
       - workerstack
 
-  # Uncomment this when you have your branded dashboard app ready.
-  # dashboard:
-  #   build:
-  #     context: ./apps/dashboard
-  #     dockerfile: Dockerfile
-  #   restart: unless-stopped
-  #   environment:
-  #     DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/dashboard
-  #     REDIS_URL: redis://redis:6379/0
-  #     PAPERCLIP_BASE_URL: http://paperclip:3100
-  #     LITELLM_BASE_URL: http://litellm:4000
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   ports:
-  #     - ${DASHBOARD_PORT:-3000}:3000
-  #   networks:
-  #     - workerstack
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    container_name: psilo-dashboard
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/dashboard
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set with openssl rand -base64 32}
+      BETTER_AUTH_URL: http://localhost:${DASHBOARD_PORT:-3000}
+      WORKER_GATEWAY_URL: http://worker-gateway:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      worker-gateway:
+        condition: service_healthy
+    ports:
+      - ${DASHBOARD_PORT:-3000}:3000
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - workerstack
 
 networks:
   workerstack:

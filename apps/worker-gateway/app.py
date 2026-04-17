@@ -48,11 +48,12 @@ http_client: Optional[httpx.AsyncClient] = None
 runtime_adapter = None
 paperclip_client: Optional[PaperclipClient] = None
 config_store = None
+run_store = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client, runtime_adapter, paperclip_client, config_store
+    global http_client, runtime_adapter, paperclip_client, config_store, run_store
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
     # Select runtime adapter via RUNTIME_ADAPTER env var.
@@ -82,6 +83,17 @@ async def lifespan(app: FastAPI):
         config_store = FileConfigStore()
         logger.info("Config store: file (YAML on disk)")
 
+    # Initialize run store (optional — needs asyncpg + database)
+    if settings.database_url:
+        try:
+            from gateway.store.run_store import RunStore
+            run_store = RunStore(settings.database_url)
+            await run_store.connect()
+            logger.info("Run store: connected")
+        except Exception as exc:
+            logger.warning("Run store unavailable: %s", exc)
+            run_store = None
+
     logger.info(
         "Worker gateway v1.0.0 started — adapter=%s, store=%s, repo_root=%s",
         runtime_adapter.name,
@@ -89,6 +101,8 @@ async def lifespan(app: FastAPI):
         settings.repo_root,
     )
     yield
+    if run_store and hasattr(run_store, "close"):
+        await run_store.close()
     if hasattr(config_store, "close"):
         await config_store.close()
     await http_client.aclose()
@@ -360,6 +374,27 @@ def _error_response(
             runtimeAdapter=runtime_adapter.name if runtime_adapter else "none",
         ),
         error=RunError(code=error_code, message=error_message),
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/runs — list recent run history
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/runs")
+async def list_runs(
+    limit: int = 50,
+    companyId: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """List recent worker runs from the run history store."""
+    if not run_store:
+        return []
+
+    return await run_store.list_runs(
+        limit=min(limit, 200),
+        company_id=companyId,
+        status=status,
     )
 
 

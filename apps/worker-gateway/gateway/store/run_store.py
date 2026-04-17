@@ -109,3 +109,84 @@ class RunStore:
             logger.info("Recorded run %s to history", run_id)
         except Exception as exc:
             logger.error("Failed to record run %s: %s", run_id, exc)
+
+    async def list_runs(
+        self,
+        *,
+        limit: int = 50,
+        company_id: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List recent runs, optionally filtered by company or status."""
+        if not self._pool:
+            logger.warning("RunStore not connected, returning empty list")
+            return []
+
+        try:
+            conditions = []
+            params: list[Any] = []
+            idx = 1
+
+            if company_id:
+                conditions.append(f"company_id = ${idx}")
+                params.append(company_id)
+                idx += 1
+            if status:
+                conditions.append(f"status = ${idx}")
+                params.append(status)
+                idx += 1
+
+            where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+            params.append(limit)
+            query = f"""
+                SELECT
+                    run_id, status,
+                    blueprint_id, blueprint_version,
+                    company_id, worker_instance_id,
+                    runtime_adapter, model_used, tokens_used, duration_ms,
+                    error_code, error_message,
+                    started_at, completed_at
+                FROM run_history
+                {where}
+                ORDER BY started_at DESC
+                LIMIT ${idx}
+            """
+
+            rows = await self._pool.fetch(query, *params)
+            return [
+                {
+                    "runId": r["run_id"],
+                    "status": r["status"],
+                    "blueprint": {
+                        "id": r["blueprint_id"],
+                        "version": r["blueprint_version"],
+                        "name": r["blueprint_id"],
+                    },
+                    "company": {
+                        "id": r["company_id"],
+                        "name": r["company_id"],
+                    },
+                    "workerInstance": {
+                        "instanceId": r["worker_instance_id"],
+                        "blueprintId": r["blueprint_id"],
+                    },
+                    "metadata": {
+                        "durationMs": r["duration_ms"],
+                        "modelUsed": r["model_used"],
+                        "tokensUsed": r["tokens_used"],
+                        "startedAt": r["started_at"].isoformat() if r["started_at"] else None,
+                        "completedAt": r["completed_at"].isoformat() if r["completed_at"] else None,
+                        "runtimeAdapter": r["runtime_adapter"],
+                    },
+                    "error": (
+                        {"code": r["error_code"], "message": r["error_message"]}
+                        if r["error_code"]
+                        else None
+                    ),
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            logger.error("Failed to list runs: %s", exc)
+            return []
