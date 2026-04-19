@@ -148,12 +148,14 @@ In the Agent Zero UI, set the chat model to use LiteLLM as an OpenAI-compatible 
 ### 3. Configure Paperclip HTTP adapter
 
 1. Open http://localhost:3100
-2. Create an agent with adapter type **HTTP**
-3. Set the webhook URL to:
+2. On the first boot, run `make logs-paperclip` and open the one-time Paperclip
+   claim URL printed in the startup logs
+3. Create an agent with adapter type **HTTP**
+4. Set the webhook URL to:
    ```
    http://worker-gateway:8080/paperclip/wake
    ```
-4. Send a test task — check worker-gateway logs with `make logs-worker-gateway`
+5. Send a test task — check worker-gateway logs with `make logs-worker-gateway`
 
 ## How the Bridge Works
 
@@ -215,7 +217,8 @@ Use the **Docker Compose build pack** in Coolify and point it to this repo.
 
 **Recommendations**:
 - Pin `LITELLM_IMAGE_TAG` to a specific stable version after testing
-- After Paperclip starts, shell in and run `paperclipai configure --section server` to harden the instance for internet-facing deployment
+- For internet-facing deploys, set `PAPERCLIP_DEPLOYMENT_MODE=authenticated` and `PAPERCLIP_PUBLIC_URL=https://paperclip.yourdomain.com`
+- On the first authenticated boot, claim the Paperclip admin URL from startup logs; if needed later, run `paperclipai auth bootstrap-ceo`
 
 ## Contributing
 

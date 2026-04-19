@@ -33,6 +33,8 @@ Set these in Coolify's environment variable UI (never commit secrets):
 | `POSTGRES_PASSWORD` | Strong random password |
 | `LITELLM_MASTER_KEY` | Must start with `sk-` |
 | `PAPERCLIP_AGENT_JWT_SECRET` | Long random hex string |
+| `PAPERCLIP_DEPLOYMENT_MODE` | Set to `authenticated` |
+| `PAPERCLIP_PUBLIC_URL` | Public Paperclip URL, e.g. `https://paperclip.yourdomain.com` |
 | `AGENTZERO_AUTH_PASSWORD` | Strong random password |
 
 ### At Least One Provider Key
@@ -50,7 +52,6 @@ Set these in Coolify's environment variable UI (never commit secrets):
 | Variable | Default | Purpose |
 |---|---|---|
 | `LITELLM_IMAGE_TAG` | `main-stable` | Pin to specific LiteLLM version |
-| `PAPERCLIP_DEPLOYMENT_MODE` | `authenticated` | Use `authenticated` for production |
 | `LITELLM_LOG` | `ERROR` | Log verbosity |
 
 ## Persistent Volumes
@@ -78,10 +79,7 @@ Redis is currently provisioned but not wired into the active application request
 
 ## Post-Deploy Steps
 
-1. **Paperclip hardening**: Shell into the Paperclip container and run:
-   ```sh
-   paperclipai configure --section server
-   ```
+1. **First Paperclip admin**: After the first deploy, open the one-time admin claim or bootstrap URL from the Paperclip startup logs. If you need to rotate it later, run `paperclipai auth bootstrap-ceo` inside the Paperclip container.
 
 2. **Agent Zero token**: Log into Agent Zero UI, copy API token, set `AGENTZERO_API_TOKEN` in Coolify env, redeploy worker-gateway.
 
@@ -106,6 +104,6 @@ Health check URLs accessible from within Coolify:
 |---|---|
 | Worker Gateway | `http://worker-gateway:8080/healthz` |
 | LiteLLM | `http://litellm:4000/health/liveliness` |
-| Paperclip | `http://paperclip:3100/api/health` |
+| Paperclip | `http://paperclip:3100/` |
 | Postgres | `pg_isready` (Docker healthcheck) |
 | Redis | `redis-cli ping` (Docker healthcheck) |

@@ -25,6 +25,11 @@ make status
 make test
 ```
 
+Paperclip runs in Docker using the upstream `authenticated/private` quickstart
+path so the UI is reachable on `http://localhost:3100`. On the first boot,
+Paperclip prints a one-time board claim URL in the container logs. That claim
+step is expected for this Docker-accessible setup.
+
 ## Service Map
 
 | Service | Internal URL | Host URL | Purpose |
@@ -62,8 +67,10 @@ This routes all Agent Zero model requests through LiteLLM instead of direct prov
 ### Step 3: Configure Paperclip HTTP Adapter
 
 1. Open http://localhost:3100
-2. Log in (Paperclip creates default credentials on first boot — check container logs if needed)
-3. Create an agent with adapter type **HTTP**
+2. On the first boot, run `make logs-paperclip` and open the one-time Paperclip
+   claim URL printed in the startup logs.
+3. Finish the browser claim flow, then create an agent with adapter type
+   **HTTP**
 4. Set the webhook URL:
    ```
    http://worker-gateway:8080/paperclip/wake
@@ -141,5 +148,7 @@ make shell-paperclip         # Shell into container
 **Agent Zero returns 401/403**: API token mismatch. Re-copy from Agent Zero UI and restart gateway.
 
 **Paperclip wake fails**: Verify the HTTP adapter points to `http://worker-gateway:8080/paperclip/wake` and that gateway auth settings match your Paperclip setup.
+
+**Paperclip shows "Instance setup required" or an old bootstrap screen**: A stale `paperclip_data` volume is carrying an earlier Paperclip config. Run `make clean`, then `make build`, and claim the fresh first-run URL from `make logs-paperclip`.
 
 **Postgres init scripts not running**: Init scripts only run on first boot with empty data volume. Run `make clean` then `make build` for a full reset.

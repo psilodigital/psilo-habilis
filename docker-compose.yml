@@ -75,8 +75,8 @@ services:
       sh -lc '
       mkdir -p /paperclip &&
       if [ ! -f /paperclip/instances/default/config.json ]; then
-        echo "[paperclip] No config found, bootstrapping with paperclipai onboard --yes";
-        paperclipai onboard --yes;
+        echo "[paperclip] No config found, bootstrapping with paperclipai onboard --yes --bind lan";
+        paperclipai onboard --yes --bind lan;
       fi &&
       exec paperclipai run --no-repair'
     environment:
@@ -87,6 +87,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/paperclip
       PAPERCLIP_AGENT_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET:?set a long random secret}
       PAPERCLIP_DEPLOYMENT_MODE: ${PAPERCLIP_DEPLOYMENT_MODE:-authenticated}
+      PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:${PAPERCLIP_PORT:-3100}}
       PAPERCLIP_OPEN_ON_LISTEN: false
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -98,7 +99,7 @@ services:
     ports:
       - ${PAPERCLIP_PORT:-3100}:3100
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3100/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 10

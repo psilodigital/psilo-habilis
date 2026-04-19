@@ -214,6 +214,12 @@
 - [x] 61/61 total gateway tests passing
 - [x] ADR-014 (Gateway-Mediated MCP) + ADR-015 (Gmail Read-Only) documented
 
+### Local Dev Reliability
+- [x] Paperclip Docker bootstrap uses the supported `paperclipai onboard --yes --bind lan` flow
+- [x] Removed ad-hoc Paperclip `config.json` mutation and switched to official `PAPERCLIP_PUBLIC_URL` wiring
+- [x] Paperclip container healthcheck now uses `/` so authenticated mode does not flap on `/api/health`
+- [x] Local and deployment docs now explain first-run Paperclip claim/bootstrap flow and when a full volume reset is required
+
 ---
 
 ## In Progress
