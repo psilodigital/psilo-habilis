@@ -52,6 +52,7 @@ class PromptAssembler:
         output_schema: Optional[Dict[str, Any]],
         client_context: Dict[str, str],
         merged_config: Dict[str, Any],
+        connectors: Optional[List[Dict[str, Any]]] = None,
     ) -> AssembledPrompt:
         """Assemble a full prompt from all available sources."""
         system_parts: List[str] = []
@@ -71,7 +72,15 @@ class PromptAssembler:
             system_parts.append(policy_text)
             metadata["sources"].append("policies")
 
-        # 3. Output format instructions
+        # 3. Connector instructions (MCP tool auth tokens)
+        if connectors:
+            connector_text = self._format_connector_instructions(connectors)
+            if connector_text:
+                system_parts.append(connector_text)
+                metadata["sources"].append("connectors")
+                metadata["connectors"] = [c["connector_id"] for c in connectors]
+
+        # 4. Output format instructions
         if output_schema:
             schema_text = self._format_output_instructions(output_schema)
             system_parts.append(schema_text)
@@ -162,6 +171,46 @@ class PromptAssembler:
             parts.append(
                 "- All outputs that take external action MUST be held for human approval."
             )
+
+        return "\n".join(parts)
+
+    def _format_connector_instructions(
+        self, connectors: List[Dict[str, Any]]
+    ) -> str:
+        """Format connector auth tokens and tool descriptions for the system prompt."""
+        if not connectors:
+            return ""
+
+        parts: List[str] = [
+            "## Available Connectors\n",
+            "You have access to the following MCP tools. "
+            "Pass the provided auth_token as the first argument to each tool call.\n",
+        ]
+
+        _TOOL_DESCRIPTIONS = {
+            "gmail": {
+                "name": "Gmail",
+                "tools": [
+                    "gmail_list_messages — List recent emails (params: auth_token, max_results?, label?)",
+                    "gmail_get_message — Get full email by ID (params: auth_token, message_id)",
+                    "gmail_search — Search emails (params: auth_token, query, max_results?)",
+                ],
+            },
+        }
+
+        for conn in connectors:
+            cid = conn["connector_id"]
+            token = conn["auth_token"]
+            scopes = conn.get("scopes", [])
+
+            desc = _TOOL_DESCRIPTIONS.get(cid, {"name": cid.title(), "tools": []})
+            parts.append(f"### {desc['name']} (scopes: {', '.join(scopes)})")
+            parts.append(f"Auth token: `{token}`")
+            if desc["tools"]:
+                parts.append("Tools:")
+                for tool in desc["tools"]:
+                    parts.append(f"  - {tool}")
+            parts.append("")
 
         return "\n".join(parts)
 

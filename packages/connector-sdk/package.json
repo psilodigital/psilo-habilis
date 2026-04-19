@@ -1,0 +1,17 @@
+{
+  "name": "@habilis/connector-sdk",
+  "version": "0.1.0",
+  "description": "Connector type definitions and contracts for the Habilis platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

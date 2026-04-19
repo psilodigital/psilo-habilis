@@ -78,6 +78,9 @@ class AgentZeroAdapter(RuntimeAdapter):
         blueprint_id = blueprint.get("id", "unknown")
         assets = load_blueprint_assets(blueprint_id)
 
+        # Resolve connectors if available (injected by app.py via merged_config)
+        connectors = merged_config.pop("_connectors", None)
+
         assembled = self._assembler.assemble(
             task_kind=task_kind,
             input_message=input_message,
@@ -89,6 +92,7 @@ class AgentZeroAdapter(RuntimeAdapter):
             output_schema=assets["output_schema"],
             client_context=client_context,
             merged_config=merged_config,
+            connectors=connectors,
         )
 
         # Combine system + user prompt for Agent Zero's single-message API

@@ -9,6 +9,14 @@ os.environ.setdefault("REPO_ROOT", _REPO_ROOT)
 os.environ.setdefault("AGENTZERO_API_TOKEN", "test-token")
 os.environ.setdefault("LITELLM_MASTER_KEY", "sk-test")
 
+# Connector layer test defaults
+try:
+    from cryptography.fernet import Fernet
+    os.environ.setdefault("CONNECTOR_ENCRYPTION_KEY", Fernet.generate_key().decode())
+except ImportError:
+    pass
+os.environ.setdefault("GATEWAY_INTERNAL_SECRET", "test-internal-secret")
+
 
 @pytest.fixture
 def repo_root():

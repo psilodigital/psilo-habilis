@@ -1,7 +1,7 @@
 # Habilis — Task Tracker
 
 > Living document. Update after every work session.
-> Last updated: 2026-04-17
+> Last updated: 2026-04-19
 
 ---
 
@@ -186,6 +186,28 @@
 - [x] Postgres port exposed as `5433` for local dev (avoids conflict with local PG)
 - [x] Build passes, dev server works, login page renders at `http://localhost:3000`
 
+### Connector Layer (Task 5)
+- [x] Evaluated A0 CLI connector (v1.9) — not applicable for service-to-service, HTTP API remains correct
+- [x] Designed gateway-mediated MCP architecture (ADR-014)
+- [x] `connector_credentials` table with Fernet encryption (migration 003)
+- [x] `ConnectorStore` — encrypted credential CRUD via asyncpg
+- [x] Session token service — short-lived JWTs for MCP tool auth
+- [x] Gmail MCP server (`services/gmail-mcp/`) — Streamable HTTP transport
+  - [x] `gmail_list_messages`, `gmail_get_message`, `gmail_search` tools
+  - [x] Auth via session token → gateway internal API → decrypted OAuth credentials
+  - [x] Dockerfile + docker-compose service (`psilo-gmail-mcp`)
+- [x] Gateway internal credential lookup API (`GET /internal/connectors/.../credentials`)
+- [x] Gateway connector CRUD endpoints (`POST/GET/DELETE /v1/connectors/...`)
+- [x] Prompt assembly: connector auth token injection into system prompt
+- [x] Agent Zero MCP config: Gmail connector wired via `A0_SET_mcp_servers`
+- [x] `@habilis/connector-sdk` package — ConnectorDefinition, ConnectorRegistry types
+- [x] Dashboard Gmail OAuth flow (`/api/connectors/gmail`)
+- [x] Config additions: `CONNECTOR_ENCRYPTION_KEY`, `GATEWAY_INTERNAL_SECRET`, `GOOGLE_CLIENT_ID/SECRET`
+- [x] `setup.sh` generates Fernet key + internal secret
+- [x] 11 unit tests (session tokens, encryption, prompt injection) — all passing
+- [x] 61/61 total gateway tests passing
+- [x] ADR-014 (Gateway-Mediated MCP) + ADR-015 (Gmail Read-Only) documented
+
 ---
 
 ## In Progress
@@ -195,12 +217,6 @@ _Nothing currently in progress._
 ---
 
 ## Next Up — Priority Order
-
-### 5. Connector Layer
-- [ ] Connector SDK structure
-- [ ] First connector strategy (Gmail)
-- [ ] Workspace-scoped permissions
-- [ ] MCP integration direction
 
 ---
 
@@ -229,6 +245,7 @@ _Nothing currently in progress._
 | ~~Agent Zero token~~ | ~~Must be manually copied from UI~~ | **Resolved** — Token derived from `sha256(runtime_id:login:password)[:16]` |
 | ~~Provider keys~~ | ~~None set — model calls will fail~~ | **Resolved** — OpenAI key configured, LiteLLM proxying |
 | Blueprint assets for wake | `/paperclip/wake` uses agent ID as blueprint ID — no matching worker-pack | Create mapping from Paperclip agent → worker-pack blueprint |
+| ~~Connector layer~~ | ~~No connector infrastructure~~ | **Resolved** — Gateway-mediated MCP with Gmail as first connector |
 | Dashboard | Empty placeholder only | No product surface yet |
 | DB config store | Implemented but untested with running Postgres | Test when stack is up |
 | Run history | RunStore implemented but not wired into /v1/workers/run response path | Wire in when DB is confirmed |

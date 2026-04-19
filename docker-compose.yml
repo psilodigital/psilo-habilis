@@ -131,6 +131,8 @@ services:
       A0_SET_browser_model_provider: openai
       A0_SET_browser_model_name: worker-default
       A0_SET_browser_model_api_base: http://litellm:4000
+      # MCP servers — Gmail connector (streamable HTTP)
+      A0_SET_mcp_servers: '{"mcpServers":{"gmail":{"url":"http://gmail-mcp:8090/mcp","type":"streamable-http","description":"Gmail connector for reading emails"}}}'
     volumes:
       - agentzero_usr:/a0/usr
     ports:
@@ -168,6 +170,10 @@ services:
       CONFIG_STORE: ${CONFIG_STORE:-file}
       RUNTIME_ADAPTER: ${RUNTIME_ADAPTER:-agentzero}
       REPO_ROOT: /app
+      CONNECTOR_ENCRYPTION_KEY: ${CONNECTOR_ENCRYPTION_KEY:-}
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     volumes:
       - ./worker-packs:/app/worker-packs:ro
       - ./clients:/app/clients:ro
@@ -199,6 +205,8 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set with openssl rand -base64 32}
       BETTER_AUTH_URL: http://localhost:${DASHBOARD_PORT:-3000}
       WORKER_GATEWAY_URL: http://worker-gateway:8080
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -208,6 +216,29 @@ services:
       - ${DASHBOARD_PORT:-3000}:3000
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - workerstack
+
+  gmail-mcp:
+    build:
+      context: ./services/gmail-mcp
+      dockerfile: Dockerfile
+    container_name: psilo-gmail-mcp
+    restart: unless-stopped
+    environment:
+      PORT: 8090
+      LOG_LEVEL: ${GMAIL_MCP_LOG_LEVEL:-info}
+      GATEWAY_INTERNAL_URL: http://worker-gateway:8080
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET:-}
+      CONNECTOR_JWT_SECRET: ${CONNECTOR_ENCRYPTION_KEY:-}
+    depends_on:
+      worker-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/mcp', timeout=2)\" 2>/dev/null || exit 0"]
       interval: 15s
       timeout: 5s
       retries: 10

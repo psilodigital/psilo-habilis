@@ -171,3 +171,42 @@
 **Rationale:** Each service owns its data. The gateway stores company configs, worker instance configs, and run history — data that belongs to the orchestration boundary, not to Paperclip or LiteLLM. Separate databases enforce clean service boundaries.
 
 **Consequences:** `infra/postgres/init/01-create-dbs.sql` creates the `gateway` database. Docker Compose passes `DATABASE_URL` to the worker-gateway service.
+
+---
+
+## ADR-014: Connector Layer via Gateway-Mediated MCP
+
+**Date:** 2026-04-19
+**Status:** Accepted
+
+**Decision:** Connectors are MCP servers running as separate Docker services. Agent Zero connects to them as static MCP endpoints (configured once at startup). Per-tenant isolation is achieved via short-lived JWT session tokens: the gateway creates a 5-minute token containing `{company_id, connector_id, scopes}`, injects it into the prompt, and the MCP server validates it to look up the correct company's OAuth credentials.
+
+**Context:** Agent Zero's MCP configuration is a global singleton — all conversations share the same MCP server pool. There is no per-request or per-tenant MCP scoping. Changing MCP config tears down all existing connections and reconnects. This means we cannot dynamically inject per-tenant MCP servers.
+
+**Rationale:** The session token pattern solves multi-tenancy without requiring per-tenant MCP infrastructure. Credentials are encrypted at rest using Fernet symmetric encryption. The MCP server never stores credentials — it fetches them from the gateway's internal API per-request. This keeps the encryption key in one place (the gateway) and makes MCP servers stateless.
+
+**Alternatives considered:**
+- **Gateway-side connectors** (fetch data before sending to A0): Would work but removes agent autonomy. Agents can't decide what to search for.
+- **Per-tenant MCP instances**: Would require N MCP servers for N tenants. Doesn't scale.
+- **Direct credential injection in prompt**: Security risk — raw OAuth tokens in the prompt context.
+
+**Consequences:**
+- New `connector_credentials` table with Fernet-encrypted OAuth tokens
+- New `ConnectorStore` for credential CRUD
+- New `services/gmail-mcp/` Docker service (first connector)
+- Gateway assembles session tokens and injects into prompts
+- `CONNECTOR_ENCRYPTION_KEY` and `GATEWAY_INTERNAL_SECRET` env vars required
+- `@habilis/connector-sdk` package defines connector type contracts
+
+---
+
+## ADR-015: Gmail as First Connector (Read-Only)
+
+**Date:** 2026-04-19
+**Status:** Accepted
+
+**Decision:** Gmail is the first connector, scoped to read-only (`gmail.readonly` OAuth scope). Exposes three MCP tools: `gmail_list_messages`, `gmail_get_message`, `gmail_search`. Write operations (drafting, sending) are deferred.
+
+**Rationale:** The inbox-worker blueprint already has `email_read` in its allowed tools. Read-only is the safest starting point — no risk of agents sending unauthorized emails. Write capabilities can be added incrementally once the approval flow is solid.
+
+**Consequences:** Google Cloud Console OAuth credentials required (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). Dashboard provides OAuth consent flow for connecting Gmail accounts.

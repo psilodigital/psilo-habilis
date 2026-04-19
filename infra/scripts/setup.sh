@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ENV_EXAMPLE="$PROJECT_DIR/.env.example"
 ENV_FILE="$PROJECT_DIR/.env"
 
@@ -26,6 +26,9 @@ POSTGRES_PW="$(rand_alphanum 32)"
 LITELLM_KEY="sk-$(rand_alphanum 48)"
 PAPERCLIP_JWT="$(rand_hex 64)"
 A0_PASSWORD="$(rand_alphanum 32)"
+INTERNAL_SECRET="$(rand_alphanum 48)"
+# Generate Fernet key (requires python3 + cryptography, fallback to empty)
+FERNET_KEY="$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' 2>/dev/null || true)"
 
 # --- Copy template and replace placeholder values ---
 cp "$ENV_EXAMPLE" "$ENV_FILE"
@@ -43,17 +46,28 @@ _sed_i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PW}|"              
 _sed_i "s|^LITELLM_MASTER_KEY=.*|LITELLM_MASTER_KEY=${LITELLM_KEY}|"                "$ENV_FILE"
 _sed_i "s|^PAPERCLIP_AGENT_JWT_SECRET=.*|PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_JWT}|" "$ENV_FILE"
 _sed_i "s|^AGENTZERO_AUTH_PASSWORD=.*|AGENTZERO_AUTH_PASSWORD=${A0_PASSWORD}|"        "$ENV_FILE"
+_sed_i "s|^GATEWAY_INTERNAL_SECRET=.*|GATEWAY_INTERNAL_SECRET=${INTERNAL_SECRET}|"  "$ENV_FILE"
+if [ -n "$FERNET_KEY" ]; then
+  _sed_i "s|^CONNECTOR_ENCRYPTION_KEY=.*|CONNECTOR_ENCRYPTION_KEY=${FERNET_KEY}|"   "$ENV_FILE"
+fi
 
 echo ""
 echo "=== .env generated ==="
 echo ""
-echo "  POSTGRES_PASSWORD    = ${POSTGRES_PW:0:4}... (generated)"
-echo "  LITELLM_MASTER_KEY   = ${LITELLM_KEY:0:8}... (generated)"
-echo "  PAPERCLIP_JWT_SECRET = ${PAPERCLIP_JWT:0:8}... (generated)"
-echo "  AGENTZERO_PASSWORD   = ${A0_PASSWORD:0:4}... (generated)"
+echo "  POSTGRES_PASSWORD       = ${POSTGRES_PW:0:4}... (generated)"
+echo "  LITELLM_MASTER_KEY      = ${LITELLM_KEY:0:8}... (generated)"
+echo "  PAPERCLIP_JWT_SECRET    = ${PAPERCLIP_JWT:0:8}... (generated)"
+echo "  AGENTZERO_PASSWORD      = ${A0_PASSWORD:0:4}... (generated)"
+echo "  GATEWAY_INTERNAL_SECRET = ${INTERNAL_SECRET:0:4}... (generated)"
+if [ -n "$FERNET_KEY" ]; then
+  echo "  CONNECTOR_ENCRYPT_KEY   = ${FERNET_KEY:0:8}... (generated)"
+else
+  echo "  CONNECTOR_ENCRYPT_KEY   = (not generated — install cryptography: pip install cryptography)"
+fi
 echo ""
 echo "Still needs manual input:"
 echo "  - At least one LLM provider API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)"
 echo "  - AGENTZERO_API_TOKEN (from Agent Zero UI after first boot: Settings > External Services)"
+echo "  - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (for Gmail connector, from Google Cloud Console)"
 echo ""
 echo "Edit $ENV_FILE to fill these in, then run: make build"

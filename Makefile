@@ -66,3 +66,6 @@ shell-worker-gateway: ## Shell into worker-gateway container
 
 shell-agentzero: ## Shell into agentzero container
 	docker exec -it psilo-agentzero bash
+
+shell-gmail-mcp: ## Shell into gmail-mcp container
+	docker exec -it psilo-gmail-mcp bash

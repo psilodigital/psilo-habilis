@@ -49,11 +49,12 @@ runtime_adapter = None
 paperclip_client: Optional[PaperclipClient] = None
 config_store = None
 run_store = None
+connector_store = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client, runtime_adapter, paperclip_client, config_store, run_store
+    global http_client, runtime_adapter, paperclip_client, config_store, run_store, connector_store
     http_client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
     # Select runtime adapter via RUNTIME_ADAPTER env var.
@@ -94,6 +95,17 @@ async def lifespan(app: FastAPI):
             logger.warning("Run store unavailable: %s", exc)
             run_store = None
 
+    # Initialize connector store (optional — needs encryption key + database)
+    if settings.database_url and settings.connector_encryption_key:
+        try:
+            from gateway.store.connector_store import ConnectorStore
+            connector_store = ConnectorStore(settings.database_url, settings.connector_encryption_key)
+            await connector_store.connect()
+            logger.info("Connector store: connected")
+        except Exception as exc:
+            logger.warning("Connector store unavailable: %s", exc)
+            connector_store = None
+
     logger.info(
         "Worker gateway v1.0.0 started — adapter=%s, store=%s, repo_root=%s",
         runtime_adapter.name,
@@ -101,6 +113,8 @@ async def lifespan(app: FastAPI):
         settings.repo_root,
     )
     yield
+    if connector_store and hasattr(connector_store, "close"):
+        await connector_store.close()
     if run_store and hasattr(run_store, "close"):
         await run_store.close()
     if hasattr(config_store, "close"):
@@ -254,6 +268,18 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
             ),
         )
 
+    # --- Step 1b: Resolve connectors ---
+    if connector_store:
+        try:
+            connectors_list = await _resolve_connectors(
+                company_id=req.companyId,
+                blueprint=blueprint,
+            )
+            if connectors_list:
+                merged_config["_connectors"] = connectors_list
+        except Exception as exc:
+            logger.warning("Connector resolution failed: %s", exc)
+
     # --- Step 2: Execute via runtime adapter ---
     merged_config["_run_id"] = run_id
     result = await runtime_adapter.execute(
@@ -326,6 +352,69 @@ async def run_worker(req: WorkerRunRequest) -> WorkerRunResponse:
     )
 
     return response
+
+
+async def _resolve_connectors(
+    *, company_id: str, blueprint: Dict[str, Any]
+) -> list:
+    """
+    Resolve active connectors for a company, cross-referenced with
+    the blueprint's tool policy. Returns a list of connector dicts
+    with session tokens for prompt injection.
+    """
+    from gateway.connectors.session import create_session_token
+
+    if not connector_store:
+        return []
+
+    # Get allowed tool IDs from blueprint
+    policies = blueprint.get("_loaded_policies", {})
+    tool_policy = policies.get("tools", {})
+    allowed_tool_ids = {t.get("id") for t in tool_policy.get("allowed", [])}
+
+    # Map tool IDs to connector IDs
+    _TOOL_CONNECTOR_MAP = {
+        "email_read": "gmail",
+        "email_draft": "gmail",
+        "email_send": "gmail",
+    }
+
+    needed_connectors = set()
+    for tool_id in allowed_tool_ids:
+        connector_id = _TOOL_CONNECTOR_MAP.get(tool_id)
+        if connector_id:
+            needed_connectors.add(connector_id)
+
+    if not needed_connectors:
+        return []
+
+    result = []
+    for connector_id in needed_connectors:
+        cred_data = await connector_store.get_credentials(company_id, connector_id)
+        if not cred_data:
+            continue
+
+        scopes = cred_data.get("scopes", [])
+        token = create_session_token(
+            company_id=company_id,
+            connector_id=connector_id,
+            scopes=scopes,
+        )
+        result.append({
+            "connector_id": connector_id,
+            "auth_token": token,
+            "scopes": scopes,
+        })
+
+    if result:
+        logger.info(
+            "Resolved %d connectors for company=%s: %s",
+            len(result),
+            company_id,
+            [c["connector_id"] for c in result],
+        )
+
+    return result
 
 
 def _error_response(
@@ -464,3 +553,93 @@ async def paperclip_wake(
         runId=payload.runId,
         message=f"Wake {status}",
     )
+
+
+# ---------------------------------------------------------------------------
+# Connector CRUD — POST/GET/DELETE /v1/connectors
+# ---------------------------------------------------------------------------
+
+@app.post("/v1/connectors/credentials")
+async def store_connector_credentials(
+    request: Request,
+) -> Dict[str, Any]:
+    """Store connector credentials (encrypted). Called by dashboard OAuth flow."""
+    if not connector_store:
+        return {"error": "Connector store not available"}
+
+    body = await request.json()
+    company_id = body.get("companyId")
+    connector_id = body.get("connectorId")
+    scopes = body.get("scopes", [])
+    credentials = body.get("credentials", {})
+
+    if not company_id or not connector_id or not credentials:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=400,
+            content={"error": "companyId, connectorId, and credentials are required"},
+        )
+
+    await connector_store.store_credentials(
+        company_id=company_id,
+        connector_id=connector_id,
+        scopes=scopes,
+        credentials=credentials,
+    )
+    return {"status": "stored", "companyId": company_id, "connectorId": connector_id}
+
+
+@app.get("/v1/connectors/{company_id}")
+async def list_connectors(company_id: str):
+    """List active connectors for a company."""
+    if not connector_store:
+        return []
+    return await connector_store.list_connectors(company_id)
+
+
+@app.delete("/v1/connectors/{company_id}/{connector_id}")
+async def revoke_connector(company_id: str, connector_id: str):
+    """Revoke connector credentials."""
+    if not connector_store:
+        return {"error": "Connector store not available"}
+    revoked = await connector_store.revoke_credentials(company_id, connector_id)
+    return {"revoked": revoked}
+
+
+# ---------------------------------------------------------------------------
+# Internal API — credential lookup for MCP servers
+# ---------------------------------------------------------------------------
+
+@app.get("/internal/connectors/{company_id}/{connector_id}/credentials")
+async def internal_get_credentials(
+    company_id: str,
+    connector_id: str,
+    x_internal_secret: Optional[str] = Header(None),
+):
+    """
+    Internal endpoint for MCP servers to fetch decrypted credentials.
+    Authenticated via X-Internal-Secret header.
+    """
+    if not settings.gateway_internal_secret or x_internal_secret != settings.gateway_internal_secret:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Forbidden"},
+        )
+
+    if not connector_store:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Connector store not available"},
+        )
+
+    result = await connector_store.get_credentials(company_id, connector_id)
+    if not result:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"No active credentials for {connector_id}"},
+        )
+
+    return result

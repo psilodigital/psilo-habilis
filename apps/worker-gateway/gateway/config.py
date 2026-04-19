@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     # Database (used when config_store=db or for run history)
     database_url: str = ""
 
+    # Connector layer
+    connector_encryption_key: str = ""  # Fernet key for encrypting OAuth tokens
+    gateway_internal_secret: str = ""  # Shared secret for internal service auth
+
+    # Google OAuth (for Gmail connector)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     model_config = {"env_file": ".env", "case_sensitive": False}
 
 
