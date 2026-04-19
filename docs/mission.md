@@ -83,15 +83,23 @@ A small business can eventually say:
 | Model gateway | Unified, provider-agnostic model access | LiteLLM |
 | Tools/Connectors | Actions into external systems | MCP + custom connectors |
 | Data | System of record | Postgres |
-| Coordination | Queues, transient state | Redis |
+| Coordination | Future queue, cache, or transient coordination layer | Redis (provisioned, not yet wired) |
 
 ### System Diagram
 
 ```
                     ┌──────────────┐
-                    │   Paperclip  │ :3100
-                    │ (control     │
-                    │  plane)      │
+                    │  Dashboard   │ :3000
+                    │ (product     │
+                    │  surface)    │
+                    └───┬─────┬────┘
+                        │     │
+                        │     └──────────────────────┐
+                        ▼                            ▼
+                    ┌──────────────┐          ┌──────────┐
+                    │   Paperclip  │ :3100    │ Postgres │ :5432
+                    │ (control     │          │          │
+                    │  plane)      │          └──────────┘
                     └──────┬───────┘
                            │ HTTP adapter POST
                            ▼
@@ -100,24 +108,24 @@ A small business can eventually say:
                     │   gateway    │
                     │  (FastAPI)   │
                     └──────┬───────┘
-                           │ POST /api_message (X-API-KEY)
+                           │ POST /api_message
                            ▼
                     ┌──────────────┐
                     │  Agent Zero  │ :50080
                     │ (worker      │
                     │  runtime)    │
+                    └──────┬───────┘
+                           │ model calls
+                           ▼
+                    ┌──────────────┐
+                    │   LiteLLM    │ :4000
+                    │  (gateway)   │
                     └──────────────┘
 
-    ┌──────────┐                    ┌──────────┐
-    │ Postgres │ :5432              │  Redis   │ :6379
-    │ (17-alp) │                    │ (7-alp)  │
-    └──────────┘                    └──────────┘
-
-    ┌──────────┐
-    │ LiteLLM  │ :4000
-    │ (model   │
-    │  proxy)  │
-    └──────────┘
+                    ┌──────────┐
+                    │  Redis   │ :6379
+                    │ reserved │
+                    └──────────┘
 ```
 
 All services communicate over the `workerstack` Docker bridge network.

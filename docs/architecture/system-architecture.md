@@ -12,7 +12,7 @@ Related: [Mission & mental model](../mission.md#architecture), [v1 thin slice](v
 
 **Source:** [mermaid/system-architecture.mermaid](mermaid/system-architecture.mermaid)
 
-Users interact with the Dashboard; Paperclip orchestrates work; the Worker Gateway resolves blueprints and routes execution to Agent Zero; LiteLLM fronts model providers; MCP and connectors reach external systems; Postgres, Redis, and files hold state and context.
+Users interact with the Dashboard; Paperclip orchestrates work; the Worker Gateway resolves blueprints and routes execution to Agent Zero; LiteLLM fronts model providers; MCP and connectors reach external systems; Postgres and files hold the current state and context. Redis is provisioned in the stack for future coordination or caching work, but it is not wired into the active runtime path yet.
 
 ```mermaid
 flowchart TB
@@ -65,7 +65,7 @@ flowchart TB
 
     subgraph DATA["State / Infra"]
         PG["Postgres"]
-        REDIS["Redis"]
+        REDIS["Redis<br/>Reserved / Future Coordination"]
         FILES["Files / Context / Config"]
     end
 
@@ -101,7 +101,6 @@ flowchart TB
 
     PAPER --> PG
     GATE --> PG
-    GATE --> REDIS
     GATE --> FILES
     A0 --> FILES
     LLM --> PG

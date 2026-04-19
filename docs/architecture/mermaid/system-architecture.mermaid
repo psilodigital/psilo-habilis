@@ -48,7 +48,7 @@ flowchart TB
 
     subgraph DATA["State / Infra"]
         PG["Postgres"]
-        REDIS["Redis"]
+        REDIS["Redis<br/>Reserved / Future Coordination"]
         FILES["Files / Context / Config"]
     end
 
@@ -84,7 +84,6 @@ flowchart TB
 
     PAPER --> PG
     GATE --> PG
-    GATE --> REDIS
     GATE --> FILES
     A0 --> FILES
     LLM --> PG

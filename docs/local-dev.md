@@ -30,7 +30,7 @@ make test
 | Service | Internal URL | Host URL | Purpose |
 |---|---|---|---|
 | Postgres | `postgres:5432` | not exposed | System of record |
-| Redis | `redis:6379` | not exposed | Queue / transient state |
+| Redis | `redis:6379` | not exposed | Reserved for future queue/cache/coordination use |
 | Dashboard | `http://dashboard:3000` | `http://localhost:3000` | Customer-facing product surface |
 | LiteLLM | `http://litellm:4000` | `http://localhost:4000` | Model gateway |
 | Paperclip | `http://paperclip:3100` | `http://localhost:3100` | Control plane |

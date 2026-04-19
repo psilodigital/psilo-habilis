@@ -61,6 +61,7 @@
 - [x] GitHub collaboration templates — issue forms, pull request template, `CODEOWNERS`, CI workflow, Dependabot
 - [x] Sync high-level docs with live stack — dashboard included in architecture/service maps, Paperclip wake flow docs corrected
 - [x] `THIRD_PARTY_NOTICES.md` — attribution for foundational upstream components and note on separate provider/API terms
+- [x] Clarify Redis status in docs — provisioned in Compose, but not yet wired into the active runtime path
 
 ### Verification
 - [x] All 6 services boot and pass healthchecks
@@ -251,6 +252,7 @@ _Nothing currently in progress._
 | ~~Provider keys~~ | ~~None set — model calls will fail~~ | **Resolved** — OpenAI key configured, LiteLLM proxying |
 | Blueprint assets for wake | `/paperclip/wake` uses agent ID as blueprint ID — no matching worker-pack | Create mapping from Paperclip agent → worker-pack blueprint |
 | ~~Connector layer~~ | ~~No connector infrastructure~~ | **Resolved** — Gateway-mediated MCP with Gmail as first connector |
+| Redis | Provisioned in Compose but not yet used by app code | Keep documented as reserved until queue/cache usage is implemented |
 | Dashboard | Thin slice exists, but product workflows are still narrow | Expand beyond auth, worker overview, run history, and connector setup |
 | DB config store | Implemented but untested with running Postgres | Test when stack is up |
 | Run history | RunStore implemented but not wired into /v1/workers/run response path | Wire in when DB is confirmed |

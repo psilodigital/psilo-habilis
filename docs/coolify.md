@@ -72,7 +72,9 @@ Docker Compose `depends_on` with healthchecks handles ordering:
 2. **litellm** + **paperclip** (depend on postgres healthy)
 3. **agentzero** (no DB dependency)
 4. **worker-gateway** (depends on litellm + paperclip + agentzero healthy)
-5. **dashboard** (depends on postgres + redis healthy)
+5. **dashboard** (depends on postgres + worker-gateway healthy)
+
+Redis is currently provisioned but not wired into the active application request path. It is kept available for future coordination, queueing, or caching work.
 
 ## Post-Deploy Steps
 

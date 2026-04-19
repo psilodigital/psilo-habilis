@@ -2,7 +2,7 @@
 
 A multi-tenant worker operating system for small and medium businesses. Businesses can activate AI workers for real operational jobs — inbox management, content creation, booking operations, CRM follow-up, and admin support.
 
-Built as a modular Docker Compose stack: Dashboard (product surface), Paperclip (orchestration), worker-gateway (execution boundary), Agent Zero (worker runtime), LiteLLM (model gateway), plus Postgres and Redis. Target deployment: Hetzner via Coolify.
+Built as a modular Docker Compose stack: Dashboard (product surface), Paperclip (orchestration), worker-gateway (execution boundary), Agent Zero (worker runtime), LiteLLM (model gateway), plus Postgres and a provisioned Redis instance reserved for future coordination/caching. Target deployment: Hetzner via Coolify.
 
 ## Open Source Readiness
 
@@ -31,7 +31,7 @@ flowchart TB
     A0["Agent Zero<br/>Runtime :50080"]
     LLM["LiteLLM<br/>Model Gateway :4000"]
     PG["Postgres :5432"]
-    REDIS["Redis :6379"]
+    REDIS["Redis<br/>Reserved / Future Use :6379"]
 
     USER --> DASH
     DASH --> PAPER
@@ -43,8 +43,6 @@ flowchart TB
 
     GATE --> A0
     GATE --> PG
-    GATE --> REDIS
-
     A0 --> LLM
     LLM --> PG
 ```
