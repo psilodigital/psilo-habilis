@@ -1,0 +1,53 @@
+name: Feature request
+description: Propose a new capability or improvement
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user or operator problem are you trying to solve?
+      placeholder: It is hard to ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the change you would like to see.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional, but useful for tradeoff discussions.
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact area
+      options:
+        - Product UX
+        - Worker runtime
+        - Orchestration
+        - Connectors
+        - Observability
+        - Developer experience
+        - Documentation
+        - Infrastructure
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Mockups, examples, prior art, or rollout concerns.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I searched existing issues and feature requests first
+          required: true
+        - label: I understand this may need design discussion before implementation
+          required: true

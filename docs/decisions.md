@@ -210,3 +210,16 @@
 **Rationale:** The inbox-worker blueprint already has `email_read` in its allowed tools. Read-only is the safest starting point — no risk of agents sending unauthorized emails. Write capabilities can be added incrementally once the approval flow is solid.
 
 **Consequences:** Google Cloud Console OAuth credentials required (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). Dashboard provides OAuth consent flow for connecting Gmail accounts.
+
+---
+
+## ADR-016: Open Source Project Baseline
+
+**Date:** 2026-04-19
+**Status:** Accepted
+
+**Decision:** Add a standard open source repository baseline: Apache-2.0 licensing, maintainer-led governance, contributor and security documentation, GitHub issue and pull request templates, `CODEOWNERS`, CI, and Dependabot.
+
+**Rationale:** Public collaboration works better when expectations are explicit. Contributors need clear setup steps, review rules, behavior standards, and security reporting paths. Maintainers also need a default merge policy, ownership signal, and lightweight automation for dependency and CI hygiene.
+
+**Consequences:** The project now has a documented contributor workflow and community standards. Maintainers are responsible for triaging issues, reviewing community pull requests, handling conduct and security reports, and keeping the automation rules current as the repository evolves.

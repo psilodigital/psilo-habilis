@@ -31,6 +31,7 @@ make test
 |---|---|---|---|
 | Postgres | `postgres:5432` | not exposed | System of record |
 | Redis | `redis:6379` | not exposed | Queue / transient state |
+| Dashboard | `http://dashboard:3000` | `http://localhost:3000` | Customer-facing product surface |
 | LiteLLM | `http://litellm:4000` | `http://localhost:4000` | Model gateway |
 | Paperclip | `http://paperclip:3100` | `http://localhost:3100` | Control plane |
 | Agent Zero | `http://agentzero:80` | `http://localhost:50080` | Worker runtime |
@@ -101,7 +102,7 @@ curl http://litellm:4000/v1/chat/completions \
 | `GET /` | Root check | `{"service":"worker-gateway","status":"ok"}` |
 | `GET /healthz` | Health with downstream status | Checks agentzero + litellm reachability |
 | `GET /info` | Service metadata | Endpoints, downstream URLs, token status |
-| `POST /paperclip/wake` | Wake endpoint | Accepts Paperclip task, returns 202, processes async |
+| `POST /paperclip/wake` | Wake endpoint | Accepts Paperclip task, executes via runtime adapter, returns 2xx |
 
 ## Wake Payload Contract
 
@@ -109,17 +110,15 @@ curl http://litellm:4000/v1/chat/completions \
 {
   "runId": "run-abc123",
   "agentId": "inbox-worker",
-  "companyId": "company-xyz",
   "input": "Process the latest emails",
-  "context": {},
-  "callbackUrl": "http://paperclip:3100/api/runs/run-abc123/complete"
+  "context": {}
 }
 ```
 
 The gateway:
-1. Accepts the payload (HTTP 202)
+1. Accepts the payload
 2. Sends `input` to Agent Zero via `POST /api_message`
-3. Calls back to Paperclip with results at `/api/runs/{runId}/complete`
+3. Returns a 2xx response to Paperclip when the wake flow completes
 
 ## Useful Commands
 
@@ -141,6 +140,6 @@ make shell-paperclip         # Shell into container
 
 **Agent Zero returns 401/403**: API token mismatch. Re-copy from Agent Zero UI and restart gateway.
 
-**Paperclip callback fails**: The callback URL `/api/runs/{runId}/complete` is a best-guess contract. Verify actual Paperclip adapter callback path in Paperclip docs.
+**Paperclip wake fails**: Verify the HTTP adapter points to `http://worker-gateway:8080/paperclip/wake` and that gateway auth settings match your Paperclip setup.
 
 **Postgres init scripts not running**: Init scripts only run on first boot with empty data volume. Run `make clean` then `make build` for a full reset.
