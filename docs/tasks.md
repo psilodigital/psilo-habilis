@@ -217,6 +217,7 @@
 ### Local Dev Reliability
 - [x] Paperclip Docker bootstrap uses the supported `paperclipai onboard --yes --bind lan` flow
 - [x] Removed ad-hoc Paperclip `config.json` mutation and switched to official `PAPERCLIP_PUBLIC_URL` wiring
+- [x] Paperclip startup now retries `bootstrap-ceo` after migrations and logs the first-admin invite automatically
 - [x] Paperclip container healthcheck now uses `/` so authenticated mode does not flap on `/api/health`
 - [x] Local and deployment docs now explain first-run Paperclip claim/bootstrap flow and when a full volume reset is required
 

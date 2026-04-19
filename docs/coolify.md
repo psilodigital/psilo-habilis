@@ -79,7 +79,7 @@ Redis is currently provisioned but not wired into the active application request
 
 ## Post-Deploy Steps
 
-1. **First Paperclip admin**: After the first deploy, open the one-time admin claim or bootstrap URL from the Paperclip startup logs. If you need to rotate it later, run `paperclipai auth bootstrap-ceo` inside the Paperclip container.
+1. **First Paperclip admin**: After the first deploy, wait for Paperclip to finish migrations, then open the bootstrap URL printed in the startup logs. If you need to rotate it later, run `paperclipai auth bootstrap-ceo --base-url https://paperclip.yourdomain.com` inside the Paperclip container.
 
 2. **Agent Zero token**: Log into Agent Zero UI, copy API token, set `AGENTZERO_API_TOKEN` in Coolify env, redeploy worker-gateway.
 

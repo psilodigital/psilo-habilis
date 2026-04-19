@@ -25,13 +25,13 @@ This is the quick-start view of the running stack. The fuller layered diagram li
 flowchart TB
     USER["Business Users / Operators"]
 
-    DASH["Dashboard<br/>Next.js :3000"]
-    PAPER["Paperclip<br/>Control Plane :3100"]
-    GATE["Worker Gateway<br/>FastAPI :8080"]
-    A0["Agent Zero<br/>Runtime :50080"]
-    LLM["LiteLLM<br/>Model Gateway :4000"]
+    DASH["Dashboard - Next.js :3000"]
+    PAPER["Paperclip - Control Plane :3100"]
+    GATE["Worker Gateway - FastAPI :8080"]
+    A0["Agent Zero - Runtime :50080"]
+    LLM["LiteLLM - Model Gateway :4000"]
     PG["Postgres :5432"]
-    REDIS["Redis<br/>Reserved / Future Use :6379"]
+    REDIS["Redis - Reserved / Future Use :6379"]
 
     USER --> DASH
     DASH --> PAPER
@@ -148,8 +148,7 @@ In the Agent Zero UI, set the chat model to use LiteLLM as an OpenAI-compatible 
 ### 3. Configure Paperclip HTTP adapter
 
 1. Open http://localhost:3100
-2. On the first boot, run `make logs-paperclip` and open the one-time Paperclip
-   claim URL printed in the startup logs
+2. On the first boot, run `make logs-paperclip` and open the one-time Paperclip bootstrap URL printed in the startup logs after Paperclip finishes startup
 3. Create an agent with adapter type **HTTP**
 4. Set the webhook URL to:
    ```
@@ -218,7 +217,7 @@ Use the **Docker Compose build pack** in Coolify and point it to this repo.
 **Recommendations**:
 - Pin `LITELLM_IMAGE_TAG` to a specific stable version after testing
 - For internet-facing deploys, set `PAPERCLIP_DEPLOYMENT_MODE=authenticated` and `PAPERCLIP_PUBLIC_URL=https://paperclip.yourdomain.com`
-- On the first authenticated boot, claim the Paperclip admin URL from startup logs; if needed later, run `paperclipai auth bootstrap-ceo`
+- On the first authenticated boot, use the bootstrap URL printed after Paperclip startup; if needed later, run `paperclipai auth bootstrap-ceo --base-url https://paperclip.yourdomain.com`
 
 ## Contributing
 

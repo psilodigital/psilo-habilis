@@ -27,8 +27,7 @@ make test
 
 Paperclip runs in Docker using the upstream `authenticated/private` quickstart
 path so the UI is reachable on `http://localhost:3100`. On the first boot,
-Paperclip prints a one-time board claim URL in the container logs. That claim
-step is expected for this Docker-accessible setup.
+Paperclip prints a one-time bootstrap URL in the container logs after migrations finish. That claim step is expected for this Docker-accessible authenticated setup.
 
 ## Service Map
 
@@ -58,7 +57,7 @@ step is expected for this Docker-accessible setup.
 In the Agent Zero UI (http://localhost:50080), configure the chat model:
 
 - **Provider**: OpenAI Compatible
-- **Base URL**: `http://litellm:4000`
+- **Base URL**: `http://litellm:4000` | `http://localhost:4000`
 - **API Key**: your `LITELLM_MASTER_KEY` value from `.env`
 - **Model**: `gpt-4.1-mini` (or any model from `services/litellm/config.yaml`)
 
@@ -67,8 +66,7 @@ This routes all Agent Zero model requests through LiteLLM instead of direct prov
 ### Step 3: Configure Paperclip HTTP Adapter
 
 1. Open http://localhost:3100
-2. On the first boot, run `make logs-paperclip` and open the one-time Paperclip
-   claim URL printed in the startup logs.
+2. On the first boot, run `make logs-paperclip` and open the one-time Paperclip bootstrap URL printed in the startup logs after Paperclip finishes startup.
 3. Finish the browser claim flow, then create an agent with adapter type
    **HTTP**
 4. Set the webhook URL:
@@ -149,6 +147,6 @@ make shell-paperclip         # Shell into container
 
 **Paperclip wake fails**: Verify the HTTP adapter points to `http://worker-gateway:8080/paperclip/wake` and that gateway auth settings match your Paperclip setup.
 
-**Paperclip shows "Instance setup required" or an old bootstrap screen**: A stale `paperclip_data` volume is carrying an earlier Paperclip config. Run `make clean`, then `make build`, and claim the fresh first-run URL from `make logs-paperclip`.
+**Paperclip shows "Instance setup required" or an old bootstrap screen**: First check `make logs-paperclip` for the bootstrap URL printed after startup. If nothing is printed and this is an old local volume, run `make clean`, then `make build`.
 
 **Postgres init scripts not running**: Init scripts only run on first boot with empty data volume. Run `make clean` then `make build` for a full reset.

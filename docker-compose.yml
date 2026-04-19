@@ -71,14 +71,7 @@ services:
       dockerfile: Dockerfile
     container_name: psilo-paperclip
     restart: unless-stopped
-    command: >-
-      sh -lc '
-      mkdir -p /paperclip &&
-      if [ ! -f /paperclip/instances/default/config.json ]; then
-        echo "[paperclip] No config found, bootstrapping with paperclipai onboard --yes --bind lan";
-        paperclipai onboard --yes --bind lan;
-      fi &&
-      exec paperclipai run --no-repair'
+    command: ["/usr/local/bin/paperclip-entrypoint"]
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -88,6 +81,7 @@ services:
       PAPERCLIP_AGENT_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET:?set a long random secret}
       PAPERCLIP_DEPLOYMENT_MODE: ${PAPERCLIP_DEPLOYMENT_MODE:-authenticated}
       PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:${PAPERCLIP_PORT:-3100}}
+      BETTER_AUTH_BASE_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:${PAPERCLIP_PORT:-3100}}
       PAPERCLIP_OPEN_ON_LISTEN: false
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
