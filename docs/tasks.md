@@ -182,6 +182,7 @@
 - [x] Gateway `RunStore` initialized in lifespan (auto-connect when `DATABASE_URL` set)
 - [x] `next.config.ts` standalone output for Docker
 - [x] Dockerfile (multi-stage: deps → build → runner) + docker-compose service
+- [x] Fix dashboard Docker runner for Next 16 monorepo standalone output (`apps/dashboard/server.js`)
 - [x] `.env` additions: `BETTER_AUTH_SECRET`, `DASHBOARD_PORT`
 - [x] Postgres port exposed as `5433` for local dev (avoids conflict with local PG)
 - [x] Build passes, dev server works, login page renders at `http://localhost:3000`

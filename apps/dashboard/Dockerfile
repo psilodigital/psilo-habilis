@@ -35,10 +35,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/apps/dashboard/public ./public
+# Next 16 monorepo standalone output nests the app under apps/dashboard.
 COPY --from=builder --chown=nextjs:nodejs /app/apps/dashboard/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/dashboard/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/dashboard/public ./apps/dashboard/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 
+WORKDIR /app/apps/dashboard
 USER nextjs
 
 EXPOSE 3000
